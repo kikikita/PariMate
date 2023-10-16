@@ -3,6 +3,7 @@ from aiogram.types import Message
 from core.keyboards.inline import sex_kb, category_kb, profile, sport_type_kb
 from core.utils.states import Registration, Sport
 from aiogram.fsm.context import FSMContext
+from ..database.bd import bd_interaction
 
 
 router = Router()
@@ -67,6 +68,8 @@ async def reg_category(message: Message, state: FSMContext):
             for k, v in data.items()
         ]
         await message.answer('\n'.join(registration_text))
+    
+    await bd_interaction(data)
 
 
 @router.message(Registration.category)
