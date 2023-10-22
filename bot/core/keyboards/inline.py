@@ -17,7 +17,7 @@ def get_start_kb():
         )
 
 
-def profile(text: str | list):
+def profile(text):
     builder = ReplyKeyboardBuilder()
 
     if isinstance(text, str):
