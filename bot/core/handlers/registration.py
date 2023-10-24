@@ -1,7 +1,8 @@
 from aiogram import Router, F
 from aiogram.types import Message
-from core.keyboards.inline import sex_kb, category_kb, profile, sport_type_kb
-from core.utils.states import Registration, Sport
+from core.keyboards.inline import \
+    sex_kb, category_kb, profile, healh_kb, education_kb, productivity_kb
+from core.utils.states import Registration, Habit
 from aiogram.fsm.context import FSMContext
 from ..database.bd import bd_interaction
 
@@ -40,8 +41,11 @@ async def reg_age(message: Message, state: FSMContext):
                                                          'женщина']))
 async def reg_sex(message: Message, state: FSMContext):
     await state.update_data(sex=message.text)
-    await state.set_state(Registration.category)
-    await message.answer('Цель из какой категории ты хочешь достичь?',
+    data = await state.get_data()
+    await bd_interaction(data)
+    # await state.clear()
+    await state.set_state(Habit.habit_category)
+    await message.answer('Выбери категорию привычек:',
                          reply_markup=category_kb())
 
 
@@ -50,29 +54,30 @@ async def incorrect_reg_sex(message: Message, state: FSMContext):
     await message.answer('Выбери один из вариантов', reply_markup=sex_kb())
 
 
-@router.message(Registration.category,
-                F.text.casefold().in_(['спорт', 'питание', 'распорядок дня']))
+@router.message(Habit.habit_category,
+                F.text.casefold().in_(['здоровье и спорт',
+                                       'обучение и развитие',
+                                       'личная продуктивность']))
 async def reg_category(message: Message, state: FSMContext):
-    await state.update_data(category=message.text)
-    data = await state.get_data()
-    await state.clear()
+    await state.update_data(habit_category=message.text)
 
-    if message.text.lower() == 'спорт':
-        await state.set_state(Sport.sport_type)
-        await message.answer('Выбери вид спорта, либо укажи свой',
-                             reply_markup=sport_type_kb())
-    else:
-        registration_text = []
-        [
-            registration_text.append(f'{k}:{v}')
-            for k, v in data.items()
-        ]
-        await message.answer('\n'.join(registration_text))
-    
-    await bd_interaction(data)
+    if message.text.lower() == 'здоровье и спорт':
+        await state.set_state(Habit.habit_healh)
+        await message.answer('Выбери желаемую привычку:',
+                             reply_markup=healh_kb())
+
+    elif message.text.lower() == 'обучение и развитие':
+        await state.set_state(Habit.habit_education)
+        await message.answer('Выбери желаемую привычку:',
+                             reply_markup=education_kb())
+
+    elif message.text.lower() == 'личная продуктивность':
+        await state.set_state(Habit.habit_productivity)
+        await message.answer('Выбери желаемую привычку:',
+                             reply_markup=productivity_kb())
 
 
-@router.message(Registration.category)
+@router.message(Habit.habit_category)
 async def incorrect_reg_category(message: Message, state: FSMContext):
     await message.answer('Выбери один из вариантов',
                          reply_markup=category_kb())
