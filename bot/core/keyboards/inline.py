@@ -54,7 +54,7 @@ def category_kb():
         )
 
 
-def healh_kb():
+def health_kb():
     keyboard_builder = ReplyKeyboardBuilder()
     keyboard_builder.button(text='Заниматься спортом')
     keyboard_builder.button(text='Правильно питаться')
@@ -70,26 +70,6 @@ def healh_kb():
         input_field_placeholder='Выбери один из вариантов'
     )
 
-
-# def sport_type_kb():
-#     keyboard_builder = ReplyKeyboardBuilder()
-#     keyboard_builder.button(text='Фитнес')
-#     keyboard_builder.button(text='Плавание')
-#     keyboard_builder.button(text='Футбол')
-#     keyboard_builder.button(text='Волейбол')
-#     keyboard_builder.button(text='Легкая атлетика')
-#     keyboard_builder.button(text='Баскетбол')
-#     keyboard_builder.button(text='Велоспорт')
-#     keyboard_builder.button(text='Ходьба')
-#     keyboard_builder.button(text='Теннис')
-#     keyboard_builder.button(text='Назад')
-#     keyboard_builder.adjust(3, 3, 3, 1)
-
-#     return keyboard_builder.as_markup(
-#         resize_keyboard=True,
-#         one_time_keyboard=True,
-#         input_field_placeholder='Выбери вид спорта, либо укажи свой'
-#     )
 
 def education_kb():
     keyboard_builder = ReplyKeyboardBuilder()
@@ -112,7 +92,6 @@ def education_kb():
 
 def productivity_kb():
     keyboard_builder = ReplyKeyboardBuilder()
-    keyboard_builder = ReplyKeyboardBuilder()
     keyboard_builder.button(text='Соблюдать режим сна')
     keyboard_builder.button(text='Планировать задачи на день')
     keyboard_builder.button(text='Проводить меньше времени в телефоне')
@@ -120,6 +99,39 @@ def productivity_kb():
     keyboard_builder.button(text='Назад')
 
     keyboard_builder.adjust(2, 1, 1)
+
+    return keyboard_builder.as_markup(
+        resize_keyboard=True,
+        one_time_keyboard=True,
+        input_field_placeholder='Выбери один из вариантов'
+    )
+
+
+def report_kb():
+    keyboard_builder = ReplyKeyboardBuilder()
+    keyboard_builder.button(text='Фотоотчет')
+    keyboard_builder.button(text='Текст')
+
+    keyboard_builder.button(text='Назад')
+
+    keyboard_builder.adjust(2, 1)
+
+    return keyboard_builder.as_markup(
+        resize_keyboard=True,
+        one_time_keyboard=True,
+        input_field_placeholder='Выбери один из вариантов'
+    )
+
+
+def mate_kb():
+    keyboard_builder = ReplyKeyboardBuilder()
+    keyboard_builder.button(text='Мужчина')
+    keyboard_builder.button(text='Женщина')
+    keyboard_builder.button(text='Не имеет значения')
+
+    keyboard_builder.button(text='Назад')
+
+    keyboard_builder.adjust(2, 1)
 
     return keyboard_builder.as_markup(
         resize_keyboard=True,

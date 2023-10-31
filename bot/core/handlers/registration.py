@@ -1,10 +1,10 @@
 from aiogram import Router, F
 from aiogram.types import Message
 from core.keyboards.inline import \
-    sex_kb, category_kb, profile, healh_kb, education_kb, productivity_kb
+    sex_kb, category_kb, profile, health_kb, education_kb, productivity_kb
 from core.utils.states import Registration, Habit
 from aiogram.fsm.context import FSMContext
-from ..database.bd import bd_interaction
+from ..database.bd import bd_interaction, bd_user_check
 
 
 router = Router()
@@ -12,10 +12,15 @@ router = Router()
 
 @router.message(F.text == 'Найти мотивацию')
 async def reg_start(message: Message, state: FSMContext):
-    await state.set_state(Registration.name)
-    await message.answer(
-        'Давай начнем, введи свое имя',
-        reply_markup=profile(message.from_user.first_name))
+    if await bd_user_check(message) is not False:
+        await state.set_state(Habit.habit_category)
+        await message.answer('Выбери категорию привычек:',
+                             reply_markup=category_kb())
+    else:
+        await state.set_state(Registration.name)
+        await message.answer(
+            'Давай начнем, введи свое имя',
+            reply_markup=profile(message.from_user.first_name))
 
 
 @router.message(Registration.name)
@@ -42,8 +47,8 @@ async def reg_age(message: Message, state: FSMContext):
 async def reg_sex(message: Message, state: FSMContext):
     await state.update_data(sex=message.text)
     data = await state.get_data()
-    await bd_interaction(data)
-    # await state.clear()
+    await bd_interaction(message, data)
+    await state.clear()
     await state.set_state(Habit.habit_category)
     await message.answer('Выбери категорию привычек:',
                          reply_markup=category_kb())
@@ -62,9 +67,9 @@ async def reg_category(message: Message, state: FSMContext):
     await state.update_data(habit_category=message.text)
 
     if message.text.lower() == 'здоровье и спорт':
-        await state.set_state(Habit.habit_healh)
+        await state.set_state(Habit.habit_health)
         await message.answer('Выбери желаемую привычку:',
-                             reply_markup=healh_kb())
+                             reply_markup=health_kb())
 
     elif message.text.lower() == 'обучение и развитие':
         await state.set_state(Habit.habit_education)

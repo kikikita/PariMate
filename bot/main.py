@@ -1,6 +1,6 @@
 from aiogram import Bot, Dispatcher
 from core.handlers import basic, registration, health, education, \
-    productivity, echo
+    productivity
 import asyncio
 import logging
 from settings import settings
@@ -29,7 +29,7 @@ async def start():
     dp.include_routers(basic.router, registration.router,
                        health.router, education.router,
                        productivity.router)
-    dp.include_router(echo.router)
+    # dp.include_router(echo.router)
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
