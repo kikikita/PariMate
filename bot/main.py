@@ -1,10 +1,13 @@
 from aiogram import Bot, Dispatcher
-from core.handlers import basic, registration, health, education, \
-    productivity
+from core.handlers import basic, registration, habit, \
+    pari, events, echo, group_games
 import asyncio
 import logging
 from settings import settings
 from core.utils.commands import set_commands
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+from core.middlewares.scheduler import SchedulerMiddleware
 
 
 async def start_bot(bot: Bot):
@@ -22,15 +25,18 @@ async def start():
                         "(%(filename)s).%(funcName)s(%(lineno)d) -%(message)s")
     bot = Bot(token=settings.bots.bot_token)
     dp = Dispatcher()
+    scheduler = AsyncIOScheduler()
 
+    dp.update.middleware.register(SchedulerMiddleware(scheduler))
     dp.startup.register(start_bot)
     dp.shutdown.register(stop_bot)
 
     dp.include_routers(basic.router, registration.router,
-                       health.router, education.router,
-                       productivity.router)
-    # dp.include_router(echo.router)
+                       habit.router, pari.router, events.router)
+    dp.include_router(echo.router)
+    dp.include_router(group_games.router)
     try:
+        scheduler.start()
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:

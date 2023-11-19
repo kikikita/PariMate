@@ -1,9 +1,9 @@
 __all__ = ['basic',
            'registration',
-           'health',
-           'education',
-           'productivity',
+           'habit',
+           'pari',
+           'events',
            'echo']
 
 
-from . import basic, registration, health, education, productivity, echo
+from . import basic, registration, habit, pari, events, echo

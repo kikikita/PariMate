@@ -7,14 +7,18 @@ class Registration(StatesGroup):
     sex = State()
 
 
+class Pari(StatesGroup):
+    pari_mate_id = State()
+    pari_message = State()
+    pari_photo_msg = State()
+    pari_report = State()
+    pari_cancel = State()
+    mate_report = State()
+    reject_reason = State()
+
+
 class Habit(StatesGroup):
     habit_category = State()
-    habit_health = State()
-    habit_education = State()
-    habit_productivity = State()
-
-
-class Health(StatesGroup):
     habit_choice = State()
     habit_frequency = State()
     habit_cause = State()
@@ -22,23 +26,6 @@ class Health(StatesGroup):
     habit_mate_sex = State()
     pari_start = State()
     pari_end = State()
-
-
-class Education(StatesGroup):
-    habit_choice = State()
-    habit_frequency = State()
-    habit_cause = State()
-    habit_report = State()
-    habit_mate_sex = State()
-    pari_start = State()
-    pari_end = State()
-
-
-class Productivity(StatesGroup):
-    habit_choice = State()
-    habit_frequency = State()
-    habit_cause = State()
-    habit_report = State()
-    habit_mate_sex = State()
-    pari_start = State()
-    pari_end = State()
+    mate_find = State()
+    mate_id = State()
+    remove_confirm = State()
