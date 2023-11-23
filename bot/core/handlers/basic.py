@@ -9,6 +9,9 @@ import time
 
 
 router = Router()
+router.message.filter(
+    ChatTypeFilter(chat_type=["private"])
+)
 
 
 @router.message(Command(commands=["start"]))

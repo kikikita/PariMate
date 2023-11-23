@@ -1,16 +1,19 @@
-from aiogram import Router, F
+from aiogram import Bot, Router, F
 from aiogram.types import Message
-from core.keyboards.reply import main_menu_kb, category_kb, health_kb, \
-    education_kb, productivity_kb, frequency_kb, report_kb, mate_kb, pari_find
+from core.keyboards.reply import (
+    main_menu_kb, category_kb, health_kb, education_kb, productivity_kb,
+    frequency_kb, report_kb, mate_kb, pari_find, hours_kb)
 from core.utils.states import Habit
 from aiogram.fsm.context import FSMContext
 import datetime as dt
-from core.database.bd import bd_habit_update, bd_mate_find, bd_user_select, \
-    bd_status_clear, bd_chat_update, bd_chat_delete
+from core.database.bd import (
+    bd_habit_update, bd_mate_find, bd_user_select, bd_time_find_update,
+    bd_status_clear, bd_chat_update, bd_chat_delete, bd_notify_update)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime
 from core.filters.chat_type import ChatTypeFilter
-
+from core.utils.notifications import get_date_notify
+import time
 
 router = Router()
 router.message.filter(
@@ -67,9 +70,8 @@ async def habit_choice(message: Message, state: FSMContext):
     else:
         await state.update_data(habit_choice=message.text)
         await state.set_state(Habit.habit_frequency)
-        await message.answer('Сколько раз неделю ты готов ' +
-                             f'{message.text.lower()}?' +
-                             '\nУкажи число дней в неделю:',
+        await message.answer('Выбери дни недели, в которые ты готов(-а) ' +
+                             f'{message.text.lower()}?',
                              reply_markup=frequency_kb())
 
 
@@ -87,10 +89,41 @@ async def incorrect_healh_choice(message: Message, state: FSMContext):
                              reply_markup=productivity_kb())
 
 
-@router.message(Habit.habit_frequency)
-async def sport_frequency(message: Message, state: FSMContext):
+@router.message(Habit.habit_frequency, F.text.casefold().in_(
+        ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']))
+async def habit_day_choose(message: Message, state: FSMContext):
+    day_list = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+    data = await state.get_data()
+    if 'habit_message' in data and data['habit_message'] is not None:
+        await data['habit_message'].delete()
+
+    if 'habit_frequency' not in data:
+        data['habit_frequency'] = [message.text]
+    else:
+        if message.text in data['habit_frequency']:
+            data['habit_frequency'].remove(message.text)
+        else:
+            data['habit_frequency'].append(message.text)
+    data['habit_frequency'] = sorted(data['habit_frequency'],
+                                     key=day_list.index)
+    days_string = (str(data["habit_frequency"])[1:-1].replace("'", ""))
+    await message.delete()
+    msg = await message.answer(
+        f'Ты выбрал: {days_string}',
+        reply_markup=frequency_kb(
+            'Подтвердить' if len(data['habit_frequency']) > 0 else None))
+    await state.update_data(habit_frequency=data['habit_frequency'],
+                            habit_message=msg)
+    await state.set_state(Habit.habit_frequency)
+
+
+@router.message(Habit.habit_frequency, F.text.casefold().in_([
+        'назад', 'подтвердить']))
+async def habit_frequency(message: Message, state: FSMContext):
+    data = await state.get_data()
     if message.text in 'Назад':
-        data = await state.get_data()
+        if 'habit_category' not in data:
+            data = await bd_user_select(message.from_user.id)
         if data['habit_category'] == "Здоровье и спорт":
             await message.answer('Выбери один из вариантов',
                                  reply_markup=health_kb())
@@ -101,100 +134,158 @@ async def sport_frequency(message: Message, state: FSMContext):
             await message.answer('Выбери один из вариантов',
                                  reply_markup=productivity_kb())
         await state.set_state(Habit.habit_choice)
+        await state.update_data(habit_frequency=[])
 
-    elif message.text.isdigit() and 1 <= int(message.text) <= 7:
-        await state.update_data(habit_frequency=int(message.text))
-        await state.set_state(Habit.habit_report)
+    else:
+        await state.update_data(
+            habit_notification_day=data['habit_frequency'],
+            habit_frequency=len(data['habit_frequency']),
+            habit_message=None)
+        await state.set_state(Habit.habit_notification_time)
         await message.answer(
-            '\nКак бы ты хотел подтверждать выполнение привычки?' +
-            '\n\nПримечение! \n- Выбирая "Фотоотчет", ты соглашаешься ' +
-            'отправлять фото, подтверждающее выполнение выбранной' +
-            f' привычки {message.text} раз(-а) в неделю. ' +
-            'Ты также сможешь подтверждать или опровергать фотоотчеты ' +
-            'других пользователей, получать баллы за завершение этапов ' +
-            'и выполнение тренировок.'
-            '\n- Выбирая "Текст", ты соглашаешься  подтверждать, ' +
-            f'выполнение выполнение привычки {message.text} раз в неделю ' +
-            'в виде тектового чек-листа. Баллы за выполнение тренировок ' +
-            'и завершение этапов НЕ начисляются.',
+            'В какое время суток присылать напоминание о привычке?',
             reply_markup=report_kb())
-    else:
-        await message.answer('Введи реальное значение!',
-                             reply_markup=frequency_kb())
 
 
-@router.message(Habit.habit_report,
-                F.text.casefold().in_(['фотоотчет', 'текст', 'назад']))
-async def sport_report(message: Message, state: FSMContext):
+@router.message(Habit.habit_frequency)
+async def incorrect_frequency(message: Message, state: FSMContext):
+    await message.answer('Выбери дни недели',
+                         reply_markup=frequency_kb())
+    await message.delete()
+
+
+@router.message(Habit.habit_notification_time,
+                F.text.casefold().in_(['утро', 'день', 'вечер',
+                                       'напоминания не нужны', 'назад']))
+async def habit_alarm(message: Message, state: FSMContext):
+    data = await state.get_data()
     if message.text in 'Назад':
-        data = await state.get_data()
-        await message.answer('Сколько раз неделю ты готов ' +
-                             f'{data["habit_choice"].lower()}?' +
-                             '\nУкажи число дней в неделю:',
+        if 'habit_choice' not in data:
+            data = await bd_user_select(message.from_user.id)
+        await state.update_data(habit_notification_time=[])
+        await message.answer('Выбери дни недели, в которые ты готов(-а) ' +
+                             f'{data["habit_choice"]}?',
                              reply_markup=frequency_kb())
+        await state.update_data(habit_frequency=[])
         await state.set_state(Habit.habit_frequency)
+
+    elif message.text in ['Утро', 'День', 'Вечер']:
+        await message.answer('Выбери время',
+                             reply_markup=hours_kb(message.text))
+        await state.set_state(Habit.habit_hour)
     else:
-        await state.update_data(habit_report=message.text)
-        if message.text == 'Текст':
-            await message.answer(
-                'Хорошо! Без фотографий мы не сможем зачислять тебе баллы,' +
-                ' но ты также можешь пользоваться приложением с напарником.' +
-                ' Он также не будет присылать фотографии')
-        data = await state.get_data()
+        await state.update_data(habit_notification_time=message.text)
         pari_start = dt.datetime.now().strftime("%d/%m/%y")
         pari_end = (dt.datetime.now() + dt.timedelta(days=7))\
             .strftime("%d/%m/%y")
+        days_string = (str(data["habit_notification_day"])[1:-1]
+                       .replace("'", ""))
         await message.answer(
             f'Итак, твоя цель на неделю c {pari_start} по {pari_end}:' +
-            f'\n{data["habit_choice"]} {data["habit_frequency"]} раз(-а). ' +
-            f'Способ подтверждения: {message.text.lower()}' +
+            f'\n{data["habit_choice"]} в {days_string}. ' +
+            f'\nНапоминания о привычке: {message.text.lower()}' +
             '\n\nДля того чтобы у тебя получилось выполнить данную цель,' +
-            'мы подберем тебе напарника со схожей задачей.')
+            'мы подберем тебе напарника со схожей задачей' +
+            '\n!Важно: вы будете обмениваться с напарником фото и видео' +
+            'подтверждениями внедрения привычек в свою жизнь')
         await message.answer(
             'С напарником какого пола ты бы хотел заключить пари?',
             reply_markup=mate_kb())
         await state.set_state(Habit.habit_mate_sex)
 
 
-@router.message(Habit.habit_report)
+@router.message(Habit.habit_notification_time)
+async def incorrect_day_part(message: Message, state: FSMContext):
+    await message.answer(
+            'В какое время суток присылать напоминание о привычке?',
+            reply_markup=report_kb())
+    await message.delete()
+
+
+@router.message(Habit.habit_hour,
+                F.text.casefold().in_([
+                    '6:00', '7:00', '8:00', '9:00', '10:00', '11:00',
+                    '12:00', '13:00', '14:00', '15:00', '16:00', '17:00',
+                    '18:00', '19:00', '20:00', '21:00', '22:00', '23:00',
+                    'назад']))
+async def hours_choice(message: Message, state: FSMContext):
+    if message.text == 'Назад':
+        await message.answer(
+            'В какое время суток присылать напоминание о привычке?',
+            reply_markup=report_kb()
+        )
+        await state.set_state(Habit.habit_notification_time)
+    else:
+        await state.update_data(habit_notification_time=message.text)
+        data = await state.get_data()
+        pari_start = dt.datetime.now().strftime("%d/%m/%y")
+        pari_end = (dt.datetime.now() + dt.timedelta(days=7))\
+            .strftime("%d/%m/%y")
+        days_string = (str(data["habit_notification_day"])[1:-1]
+                       .replace("'", ""))
+        await message.answer(
+            f'Итак, твоя цель на неделю c {pari_start} по {pari_end}:' +
+            f'\n{data["habit_choice"]} в {days_string}. ' +
+            f'\nНапоминания о привычке: {message.text}' +
+            '\n\nДля того чтобы у тебя получилось выполнить данную цель,' +
+            'мы подберем тебе напарника со схожей задачей' +
+            '\n!Важно: вы будете обмениваться с напарником фото и видео' +
+            'подтверждениями внедрения привычек в свою жизнь')
+        time.sleep(0.5)
+        await message.answer(
+            'С напарником какого пола ты бы хотел заключить пари?',
+            reply_markup=mate_kb())
+        await state.set_state(Habit.habit_mate_sex)
+
+
+@router.message(Habit.habit_notification_time)
 async def incorrect_sport_report(message: Message, state: FSMContext):
     await message.answer('Выбери один из вариантов',
                          reply_markup=report_kb())
 
 
-@router.message(Habit.habit_mate_sex)
+@router.message(Habit.habit_mate_sex, F.text.casefold().in_(
+        ['мужчина', 'женщина', 'не имеет значения', 'назад']))
 async def habit_mate_sex(message: Message, state: FSMContext,
-                         scheduler: AsyncIOScheduler):
+                         scheduler: AsyncIOScheduler, bot: Bot):
     if message.text in 'Назад':
         await message.answer(
-            '\nКак бы ты хотел подтверждать выполнение привычки?' +
-            '\n\nПримечение! \n- Выбирая "Фотоотчет", ты соглашаешься ' +
-            'отправлять фото, подтверждающее выполнение выбранной' +
-            f' привычки {message.text} раз(-а) в неделю. ' +
-            'Ты также сможешь подтверждать или опровергать фотоотчеты ' +
-            'других пользователей, получать баллы за завершение этапов ' +
-            'и выполнение тренировок.'
-            '\n- Выбирая "Текст", ты соглашаешься  подтверждать, ' +
-            f'выполнение выполнение привычки {message.text} раз в неделю ' +
-            'в виде тектового чек-листа. Баллы за выполнение тренировок ' +
-            'и завершение этапов НЕ начисляются.',
-            reply_markup=report_kb())
-        await state.set_state(Habit.habit_report)
+                'В какое время суток присылать напоминание о привычке?',
+                reply_markup=report_kb())
+        await state.set_state(Habit.habit_notification_time)
     else:
+        await state.update_data(habit_mate_sex=message.text)
+        await state.update_data(time_find_start=datetime.now())
+        data = await state.get_data()
+        if 'habit_notification_time' in data\
+                and data['habit_notification_time'] != 'Напоминания не нужны':
+            notification_dates = get_date_notify(
+                data['habit_notification_day'],
+                data['habit_notification_time'])
+            await bd_notify_update(message.from_user.id, notification_dates)
+
         await message.answer('Ищем партнера по привычке...',
                              reply_markup=pari_find())
-        await state.update_data(habit_mate_sex=message.text)
-        await state.update_data(mate_find=datetime.now())
-        data = await state.get_data()
-        await bd_habit_update(message.from_user.id, data)
+        if 'habit_category' in data:
+            await bd_habit_update(message.from_user.id, data)
+        else:
+            await bd_time_find_update(message.from_user.id)
         await state.set_state(Habit.mate_find)
-        await pari_mate_find(message, state, scheduler)
+        await pari_mate_find(message, state, scheduler, bot)
+
+
+@router.message(Habit.habit_mate_sex)
+async def incorrect_mate_sex(message: Message, state: FSMContext):
+    await message.answer(
+            'С напарником какого пола ты бы хотел заключить пари?',
+            reply_markup=mate_kb())
+    await state.set_state(Habit.habit_mate_sex)
 
 
 @router.message(Habit.mate_find)
 async def pari_mate_find(message: Message, state: FSMContext,
-                         scheduler: AsyncIOScheduler):
-    data = await state.get_data()
+                         scheduler: AsyncIOScheduler, bot: Bot):
+    data = await bd_user_select(message.from_user.id)
     if message.text == 'Отменить поиск':
         await message.answer('Поиск отменен')
         await bd_status_clear(message.from_user.id)
@@ -222,22 +313,19 @@ async def pari_mate_find(message: Message, state: FSMContext,
     elif message.text == 'Подтвердить пари':
         scheduler.add_job(bd_chat_update, trigger='interval',
                           seconds=5, id=f'chat_find_{message.from_user.id}',
-                          kwargs={'message': message,
-                                  'mate_id': data['mate_id'],
+                          kwargs={'user_id': message.from_user.id,
+                                  'mate_id': data['pari_mate_id'],
                                   'scheduler': scheduler,
-                                  'state': state})
+                                  'state': state,
+                                  'bot': bot})
         await message.answer('Ожидаем подтверждение от напарника...')
         await state.set_state(Habit.remove_confirm)
-        # await state.clear()
 
     else:
-        sex = (await bd_user_select(message.from_user.id))['sex']
-
         scheduler.add_job(bd_mate_find, trigger='interval',
                           seconds=5, id=f'mate_find_{message.from_user.id}',
                           kwargs={'message': message,
                                   'values': data,
-                                  'sex': sex,
                                   'scheduler': scheduler,
                                   'state': state})
 

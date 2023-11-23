@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message
-from core.keyboards.reply import main_menu_kb, sex_kb, category_kb, profile
+from core.keyboards.reply import (
+    main_menu_kb, sex_kb, category_kb, profile, pari_choice)
 from core.utils.states import Registration, Habit
 from aiogram.fsm.context import FSMContext
 from ..database.bd import bd_interaction, bd_user_select
@@ -17,10 +18,25 @@ router.message.filter(
 async def reg_start(message: Message, state: FSMContext):
     result = await bd_user_select(message.from_user.id)
     if result is not False:
-        if result['pari_chat_link'] is None:
+        if result['pari_chat_link'] is None and result['pari_mate_id'] is None:
             await state.set_state(Habit.habit_category)
             await message.answer('Выбери категорию привычек:',
                                  reply_markup=category_kb())
+
+        elif result['pari_mate_id'] is not None\
+                and result['time_pari_start'] is None:
+            mate = await bd_user_select(result['pari_mate_id'])
+            await state.update_data(mate_id=mate["user_id"])
+            await message.answer(
+                'Мы нашли для тебя напарника, и он ожидает подверждения!')
+            await message.answer(
+                'Партнер по привычке найден:' +
+                f'\n{mate["name"]}, {mate["age"]}' +
+                f'\nЦель: {mate["habit_choice"].lower()} ' +
+                f'{mate["habit_frequency"]} раз в неделю.',
+                reply_markup=pari_choice())
+            await state.set_state(Habit.mate_find)
+
         else:
             await message.answer(
                 'У тебя уже есть активное пари!' +

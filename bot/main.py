@@ -1,12 +1,12 @@
 from aiogram import Bot, Dispatcher
-from core.handlers import basic, registration, habit, \
-    pari, events, echo, group_games
+from core.handlers import (
+    basic, registration, habit, pari, profile, events, echo, group_games)
 import asyncio
 import logging
 from settings import settings
 from core.utils.commands import set_commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
+from core.utils.notifications import send_notifications
 from core.middlewares.scheduler import SchedulerMiddleware
 
 
@@ -32,9 +32,14 @@ async def start():
     dp.shutdown.register(stop_bot)
 
     dp.include_routers(basic.router, registration.router,
-                       habit.router, pari.router, events.router)
+                       habit.router, pari.router, events.router,
+                       profile.router)
     dp.include_router(echo.router)
     dp.include_router(group_games.router)
+
+    scheduler.add_job(send_notifications, trigger='interval',
+                      hours=1, start_date='2023-11-10 00:00:00',
+                      kwargs={'bot': bot})
     try:
         scheduler.start()
         await bot.delete_webhook(drop_pending_updates=True)

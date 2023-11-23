@@ -149,6 +149,32 @@ def cancel_report_reject():
     return builder.as_markup()
 
 
+def pari_report_from_notify():
+    builder = InlineKeyboardBuilder()
+
+    builder.button(
+        text="Подтвердить выполнение привычки",
+        callback_data="update_report"
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def profile_kb():
+    builder = InlineKeyboardBuilder()
+
+    builder.button(
+        text="Изменить данные о себе",
+        callback_data="update_profile"
+    )
+    builder.button(
+        text="Изменить время напоминаний",
+        callback_data="notifications"
+    )
+    builder.adjust(1, 1, 1)
+    return builder.as_markup()
+
+
 class NumbersCallbackFactory(CallbackData, prefix="fabnum"):
     action: str
     value: Optional[int] = None
