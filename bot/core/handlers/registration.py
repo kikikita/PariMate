@@ -1,11 +1,13 @@
+from aiogram import Bot
 from aiogram import Router, F
 from aiogram.types import Message
 from core.keyboards.reply import (
-    main_menu_kb, sex_kb, category_kb, profile, pari_choice)
+    main_menu_kb, sex_kb, category_kb, profile, pari_choice, pari_find)
 from core.utils.states import Registration, Habit
 from aiogram.fsm.context import FSMContext
 from ..database.bd import bd_interaction, bd_user_select
 from core.filters.chat_type import ChatTypeFilter
+from core.handlers.profile import get_profile
 
 
 router = Router()
@@ -18,7 +20,8 @@ router.message.filter(
 async def reg_start(message: Message, state: FSMContext):
     result = await bd_user_select(message.from_user.id)
     if result is not False:
-        if result['pari_chat_link'] is None and result['pari_mate_id'] is None:
+        if result['pari_chat_link'] is None and result['pari_mate_id'] is None\
+                and result['time_find_start'] is None:
             await state.set_state(Habit.habit_category)
             await message.answer('Выбери категорию привычек:',
                                  reply_markup=category_kb())
@@ -36,7 +39,11 @@ async def reg_start(message: Message, state: FSMContext):
                 f'{mate["habit_frequency"]} раз в неделю.',
                 reply_markup=pari_choice())
             await state.set_state(Habit.mate_find)
-
+        elif result['time_find_start'] is not None\
+                and result['pari_mate_id'] is None:
+            await state.set_state(Habit.mate_find)
+            await message.answer('Ищем партнера по привычке...',
+                                 reply_markup=pari_find())
         else:
             await message.answer(
                 'У тебя уже есть активное пари!' +
@@ -70,14 +77,19 @@ async def reg_age(message: Message, state: FSMContext):
 
 @router.message(Registration.sex, F.text.casefold().in_(['мужчина',
                                                          'женщина']))
-async def reg_sex(message: Message, state: FSMContext):
+async def reg_sex(message: Message, state: FSMContext, bot: Bot):
     await state.update_data(sex=message.text)
     data = await state.get_data()
-    await bd_interaction(message.from_user.id, data)
+    user = await bd_interaction(message.from_user.id, data)
     await state.clear()
     await state.set_state(Habit.habit_category)
-    await message.answer('Выбери категорию привычек:',
-                         reply_markup=category_kb())
+    if user is not None:
+        await message.answer('Данные обновлены', reply_markup=main_menu_kb())
+        await message
+        await get_profile(message, state, bot)
+    else:
+        await message.answer('Выбери категорию привычек:',
+                             reply_markup=category_kb())
 
 
 @router.message(Registration.sex)

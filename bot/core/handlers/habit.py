@@ -31,15 +31,15 @@ async def reg_category(message: Message, state: FSMContext):
     await state.set_state(Habit.habit_choice)
 
     if message.text.lower() == 'здоровье и спорт':
-        await message.answer('Выбери желаемую привычку:',
+        await message.answer('Выбери желаемую привычку, либо укажи свою:',
                              reply_markup=health_kb())
 
     elif message.text.lower() == 'обучение и развитие':
-        await message.answer('Выбери желаемую привычку:',
+        await message.answer('Выбери желаемую привычку, либо укажи свою:',
                              reply_markup=education_kb())
 
     elif message.text.lower() == 'личная продуктивность':
-        await message.answer('Выбери желаемую привычку:',
+        await message.answer('Выбери желаемую привычку, либо укажи свою:',
                              reply_markup=productivity_kb())
 
     else:
@@ -54,13 +54,14 @@ async def incorrect_reg_category(message: Message, state: FSMContext):
                          reply_markup=category_kb())
 
 
-@router.message(Habit.habit_choice, F.text.casefold().in_(
-        ['заниматься спортом', 'правильно питаться', 'пить воду',
-         'принимать добавки', 'делать зарядку', 'гулять',
-         'изучать новый навык', 'читать', 'проходить учебный курс',
-         'вести дневник', 'изучать новый язык', 'медитировать',
-         'соблюдать режим сна', 'планировать задачи на день',
-         'проводить меньше времени в телефоне', 'назад']))
+# @router.message(Habit.habit_choice, F.text.casefold().in_(
+#         ['заниматься спортом', 'правильно питаться', 'пить воду',
+#          'принимать добавки', 'делать зарядку', 'гулять',
+#          'изучать новый навык', 'читать', 'проходить учебный курс',
+#          'вести дневник', 'изучать новый язык', 'медитировать',
+#          'соблюдать режим сна', 'планировать задачи на день',
+#          'проводить меньше времени в телефоне', 'назад']))
+@router.message(Habit.habit_choice, F.text)
 async def habit_choice(message: Message, state: FSMContext):
     if message.text in 'Назад':
         await message.answer('Выбери категорию привычек:',
@@ -75,18 +76,18 @@ async def habit_choice(message: Message, state: FSMContext):
                              reply_markup=frequency_kb())
 
 
-@router.message(Habit.habit_choice)
-async def incorrect_healh_choice(message: Message, state: FSMContext):
-    data = await state.get_data()
-    if data['habit_category'] == "Здоровье и спорт":
-        await message.answer('Выбери один из вариантов',
-                             reply_markup=health_kb())
-    elif data['habit_category'] == "Обучение и развитие":
-        await message.answer('Выбери один из вариантов',
-                             reply_markup=education_kb())
-    else:
-        await message.answer('Выбери один из вариантов',
-                             reply_markup=productivity_kb())
+# @router.message(Habit.habit_choice)
+# async def incorrect_healh_choice(message: Message, state: FSMContext):
+#     data = await state.get_data()
+#     if data['habit_category'] == "Здоровье и спорт":
+#         await message.answer('Выбери один из вариантов',
+#                              reply_markup=health_kb())
+#     elif data['habit_category'] == "Обучение и развитие":
+#         await message.answer('Выбери один из вариантов',
+#                              reply_markup=education_kb())
+#     else:
+#         await message.answer('Выбери один из вариантов',
+#                              reply_markup=productivity_kb())
 
 
 @router.message(Habit.habit_frequency, F.text.casefold().in_(
@@ -296,7 +297,9 @@ async def pari_mate_find(message: Message, state: FSMContext,
         scheduler.remove_job(f'mate_find_{message.from_user.id}')
 
 # 'No job by the id of mate_cancel_323718009 was found'
-        scheduler.remove_job(f'mate_cancel_{message.from_user.id}')
+        get_job = scheduler.get_job(f'mate_cancel_{message.from_user.id}')
+        if get_job:
+            scheduler.remove_job(f'mate_cancel_{message.from_user.id}')
         await bd_chat_delete(message.from_user.id)
 
     elif message.text == 'Отказаться':
@@ -307,7 +310,9 @@ async def pari_mate_find(message: Message, state: FSMContext,
             reply_markup=mate_kb())
         await state.set_state(Habit.habit_mate_sex)
         scheduler.remove_job(f'mate_find_{message.from_user.id}')
-        scheduler.remove_job(f'mate_cancel_{message.from_user.id}')
+        get_job = scheduler.get_job(f'mate_cancel_{message.from_user.id}')
+        if get_job:
+            scheduler.remove_job(f'mate_cancel_{message.from_user.id}')
         await bd_chat_delete(message.from_user.id)
 
     elif message.text == 'Подтвердить пари':
@@ -322,19 +327,24 @@ async def pari_mate_find(message: Message, state: FSMContext,
         await state.set_state(Habit.remove_confirm)
 
     else:
-        scheduler.add_job(bd_mate_find, trigger='interval',
-                          seconds=5, id=f'mate_find_{message.from_user.id}',
-                          kwargs={'message': message,
-                                  'values': data,
-                                  'scheduler': scheduler,
-                                  'state': state})
+        get_job = scheduler.get_job(f'mate_find_{message.from_user.id}')
+        if not get_job:
+            scheduler.add_job(
+                bd_mate_find, trigger='interval',
+                seconds=5, id=f'mate_find_{message.from_user.id}',
+                kwargs={'message': message,
+                        'values': data,
+                        'scheduler': scheduler,
+                        'state': state})
 
 
 @router.message(Habit.remove_confirm,
                 F.text.casefold().in_(['отказаться', 'отменить поиск']))
 async def remove_confirm(message: Message, state: FSMContext,
                          scheduler: AsyncIOScheduler):
-    scheduler.remove_all_jobs()
+    get_job = scheduler.get_job(f'mate_cancel_{message.from_user.id}')
+    if get_job:
+        scheduler.remove_job(f'mate_cancel_{message.from_user.id}')
     await bd_status_clear(message.from_user.id)
     await bd_chat_delete(message.from_user.id)
     await message.answer('Вы отказались от пари')

@@ -24,11 +24,22 @@ HOST = config['host']
 async def bd_interaction(user_id: int, values: list):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
-    await conn.execute('''
-                       INSERT INTO parimate_users(user_id, name, age, sex)
-                       VALUES($1, $2, $3, $4)
-                       ''', user_id,
-                       values['name'], int(values['age']), values['sex'])
+    try:
+        await conn.execute(
+                        '''
+                        INSERT INTO parimate_users(user_id, name, age, sex)
+                        VALUES($1, $2, $3, $4)''',
+                        user_id, values['name'], int(values['age']),
+                        values['sex'])
+    except Exception:
+        name = await conn.fetchval(
+                        '''
+                        UPDATE parimate_users SET name=$2, age=$3, sex=$4
+                        WHERE user_id = $1
+                        RETURNING parimate_users.name
+                        ''', user_id,
+                        values['name'], int(values['age']), values['sex'])
+        return name
     await conn.close()
 
 
@@ -46,7 +57,9 @@ async def bd_user_check(user_id: int):
         return False
 
 
-async def bd_notify_update(user_id: int, time_list):
+async def bd_notify_update(user_id: int, time_list,
+                           notify_day: str | None = None,
+                           notify_time: str | None = None):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
     result = await conn.fetch('''
@@ -60,6 +73,12 @@ async def bd_notify_update(user_id: int, time_list):
                             (user_id, date)
                             VALUES($1, $2)
                             ''', user_id, time)
+    if notify_day and notify_time:
+        await conn.execute('''UPDATE parimate_users SET
+                           habit_notification_day = $2,
+                           habit_notification_time = $3
+                           WHERE user_id = $1
+                           ''', user_id, notify_day, notify_time)
     await conn.close()
 
 

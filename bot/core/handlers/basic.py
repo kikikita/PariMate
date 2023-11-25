@@ -1,4 +1,4 @@
-from aiogram import Router, Bot
+from aiogram import Router, Bot, F
 from aiogram.filters import Command
 from aiogram.types import Message
 from core.keyboards.reply import get_start_kb, main_menu_kb
@@ -38,6 +38,7 @@ async def get_menu(message: Message, state: FSMContext):
 
 
 @router.message(Command(commands=["help"]))
+@router.message(F.text.casefold().in_(['помощь']))
 async def get_info(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(

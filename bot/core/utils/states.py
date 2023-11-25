@@ -33,3 +33,11 @@ class Habit(StatesGroup):
     mate_find = State()
     pari_mate_id = State()
     remove_confirm = State()
+
+
+class Profile(StatesGroup):
+    habit_frequency = State()
+    habit_hour = State()
+    habit_message = State()
+    habit_notification_day = State()
+    habit_notification_time = State()

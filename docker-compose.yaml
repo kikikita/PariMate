@@ -1,0 +1,45 @@
+version: "3"
+services:
+
+  database:
+    container_name: database
+    image: postgres:14
+    env_file:
+      - '.env'
+    environment:
+      POSTGRES_DB: ${database}
+      POSTGRES_USER: ${user}
+      POSTGRES_PASSWORD: ${password}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready
+        - -U
+        - admin
+    networks:
+      - postgres
+
+  backend:
+    container_name: backend
+    image: parimate_bot:latest
+    environment:
+      PG_NAME: ${POSTGRES_DB}
+      PG_USER: ${user}
+      PG_PASSWORD: ${password}
+      PG_HOST: database
+      TOKEN: ${TOKEN}
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - postgres
+
+volumes:
+  postgres:
+
+networks:
+  postgres:
+    driver: bridge
+

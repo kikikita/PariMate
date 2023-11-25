@@ -160,18 +160,19 @@ def pari_report_from_notify():
     return builder.as_markup()
 
 
-def profile_kb():
+def profile_kb(notify: int | None = None):
     builder = InlineKeyboardBuilder()
 
     builder.button(
         text="Изменить данные о себе",
         callback_data="update_profile"
     )
-    builder.button(
-        text="Изменить время напоминаний",
-        callback_data="notifications"
-    )
-    builder.adjust(1, 1, 1)
+    # if notify:
+    #     builder.button(
+    #         text="Изменить время напоминаний",
+    #         callback_data="update_notifications"
+    #     )
+    builder.adjust(1)
     return builder.as_markup()
 
 

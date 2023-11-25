@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, ContentType
 from aiogram.utils.media_group import MediaGroupBuilder
 from core.keyboards.reply import (
-    main_menu_kb, pari_report_cancel, pari_choice, remove_kb)
+    main_menu_kb, pari_report_cancel, pari_choice, pari_find, remove_kb)
 from core.keyboards.inline import (
     get_pari, cancel_approve, cancel_сancel, mate_report, pari_report_more,
     cancel_report_reject, pari_report_confirm)
@@ -71,6 +71,11 @@ async def pari(message: Message, state: FSMContext):
             f'{mate["habit_frequency"]} раз в неделю.',
             reply_markup=pari_choice())
         await state.set_state(Habit.mate_find)
+    elif result['time_find_start'] is not None\
+            and result['pari_mate_id'] is None:
+        await state.set_state(Habit.mate_find)
+        await message.answer('Ищем партнера по привычке...',
+                             reply_markup=pari_find())
     else:
         await message.answer('В данный момент ты не принимаешь участие в пари',
                              reply_markup=main_menu_kb())
@@ -84,8 +89,8 @@ async def get_pari_report(callback: CallbackQuery, state: FSMContext):
     #         await msg.delete()
     data['pari_message'] = []
     callback_msg = await callback.message.answer(
-        "Загрузи фото, подтверждающее выполнение привычки, " +
-        "либо нажми кнопку 'Отмена'",
+        "Загрузи фото/видео/кружочек/текст, подтверждающие " +
+        "выполнение привычки, либо нажми кнопку 'Отмена'",
         reply_markup=cancel_сancel())
     data['pari_message'].append(callback_msg)
     await state.update_data(pari_message=data['pari_message'])
@@ -168,6 +173,21 @@ async def note_handler(message: Message, state: FSMContext):
     await state.update_data(pari_message=data["pari_message"])
 
 
+@router.message(Pari.pari_report, F.text)
+async def text_handler(message: Message, state: FSMContext):
+    data = await state.get_data()
+    for msg in data['pari_message']:
+        await msg.delete()
+    text = message.text
+    msg = await message.answer(text,
+                               reply_markup=pari_report_confirm())
+    data['pari_message'] = [msg]
+    data['pari_report'] = ['text']
+    data["pari_report"].append(text)
+    await state.update_data(pari_report=data["pari_report"])
+    await state.update_data(pari_message=data["pari_message"])
+
+
 @router.callback_query(Pari.pari_report, F.data == 'send_report')
 async def not_foto_handler(callback: CallbackQuery, state: FSMContext,
                            bot: Bot):
@@ -186,6 +206,11 @@ async def not_foto_handler(callback: CallbackQuery, state: FSMContext,
             f'{report_time.strftime("%d/%m/%y %H:%M")} сформирован')
 
     elif data['pari_report'][0] == 'video_note':
+        await callback.message.answer(
+            'Отчет от ' +
+            f'{report_time.strftime("%d/%m/%y %H:%M")} сформирован')
+
+    elif data['pari_report'][0] == 'text':
         await callback.message.answer(
             'Отчет от ' +
             f'{report_time.strftime("%d/%m/%y %H:%M")} сформирован')
@@ -238,8 +263,17 @@ async def get_mate_reports(callback: CallbackQuery, state: FSMContext):
             await callback.message.answer(
                 'Подтвердить отчет?',
                 reply_markup=mate_report())
+
         elif report[0] == 'video_note':
             await callback.message.answer_video_note(report[1])
+            await callback.message.answer(
+                'Отчет напарника от ' +
+                f'{result["date"].strftime("%d/%m/%y %H:%M")}'
+                '\n\nПодтвердить?',
+                reply_markup=mate_report())
+
+        elif report[0] == 'text':
+            await callback.message.answer(report[1])
             await callback.message.answer(
                 'Отчет напарника от ' +
                 f'{result["date"].strftime("%d/%m/%y %H:%M")}'
