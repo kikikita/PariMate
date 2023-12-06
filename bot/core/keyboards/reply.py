@@ -130,11 +130,12 @@ def frequency_kb(accept: str | None = None):
 
     for day in day_list:
         keyboard_builder.button(text=day)
+    keyboard_builder.button(text='Ежедневно')
+    keyboard_builder.button(text='Назад')
     if accept:
         keyboard_builder.button(text='Подтвердить')
-    keyboard_builder.button(text='Назад')
 
-    keyboard_builder.adjust(7, 1)
+    keyboard_builder.adjust(7, 1, 2)
 
     return keyboard_builder.as_markup(
         resize_keyboard=True,
@@ -143,26 +144,22 @@ def frequency_kb(accept: str | None = None):
     )
 
 
-def hours_kb(day_part: str | None = None):
+def hours_kb(accept: str | None = None):
     keyboard_builder = ReplyKeyboardBuilder()
 
-    morning_list = ['6:00', '7:00', '8:00', '9:00', '10:00', '11:00']
-    day_list = ['12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
-    evening_list = ['18:00', '19:00', '20:00', '21:00', '22:00', '23:00']
+    morning = ['5:00', '6:00', '7:00', '8:00', '9:00', '10:00', '11:00']
+    day = ['12:00', '13:00', '14:00', '15:00', '16:00', '17:00']
+    evening = ['18:00', '19:00', '20:00', '21:00', '22:00', '23:00', '0:00']
 
-    if day_part == 'Утро':
-        for hour in morning_list:
-            keyboard_builder.button(text=hour)
-    elif day_part == 'День':
-        for hour in day_list:
-            keyboard_builder.button(text=hour)
-    else:
-        for hour in evening_list:
-            keyboard_builder.button(text=hour)
+    hours_list = (morning + day + evening)
 
+    for hour in hours_list:
+        keyboard_builder.button(text=hour)
     keyboard_builder.button(text='Назад')
+    if accept:
+        keyboard_builder.button(text='Подтвердить')
 
-    keyboard_builder.adjust(3, 3, 1)
+    keyboard_builder.adjust(5, 5, 5, 5, 2)
 
     return keyboard_builder.as_markup(
         resize_keyboard=True,
@@ -171,22 +168,22 @@ def hours_kb(day_part: str | None = None):
     )
 
 
-def report_kb():
-    keyboard_builder = ReplyKeyboardBuilder()
-    keyboard_builder.button(text='Утро')
-    keyboard_builder.button(text='День')
-    keyboard_builder.button(text='Вечер')
-    keyboard_builder.button(text='Напоминания не нужны')
+# def report_kb():
+#     keyboard_builder = ReplyKeyboardBuilder()
+#     keyboard_builder.button(text='Утро')
+#     keyboard_builder.button(text='День')
+#     keyboard_builder.button(text='Вечер')
+#     # keyboard_builder.button(text='Напоминания не нужны')
 
-    keyboard_builder.button(text='Назад')
+#     keyboard_builder.button(text='Назад')
 
-    keyboard_builder.adjust(3, 1, 1)
+#     keyboard_builder.adjust(3, 1)
 
-    return keyboard_builder.as_markup(
-        resize_keyboard=True,
-        one_time_keyboard=True,
-        input_field_placeholder='Выбери один из вариантов'
-    )
+#     return keyboard_builder.as_markup(
+#         resize_keyboard=True,
+#         one_time_keyboard=True,
+#         input_field_placeholder='Выбери один из вариантов'
+#     )
 
 
 def mate_kb():

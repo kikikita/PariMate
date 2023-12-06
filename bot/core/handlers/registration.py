@@ -40,10 +40,17 @@ async def reg_start(message: Message, state: FSMContext):
                 reply_markup=pari_choice())
             await state.set_state(Habit.mate_find)
         elif result['time_find_start'] is not None\
-                and result['pari_mate_id'] is None:
+                and result['pari_mate_id'] is None\
+                and result['time_pari_start'] is None:
             await state.set_state(Habit.mate_find)
             await message.answer('Ищем партнера по привычке...',
                                  reply_markup=pari_find())
+        elif result['time_find_start'] is not None\
+                and result['pari_mate_id'] is None\
+                and result['time_pari_start'] is not None:
+            await message.answer(
+                'Мы уже подбираем тебе нового партнера по привычке' +
+                '\nНужно немного подождать')
         else:
             await message.answer(
                 'У тебя уже есть активное пари!' +

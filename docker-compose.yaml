@@ -6,10 +6,12 @@ services:
     image: postgres:14
     env_file:
       - '.env'
+    ports:
+      - 5432:5432
     environment:
-      POSTGRES_DB: ${database}
-      POSTGRES_USER: ${user}
-      POSTGRES_PASSWORD: ${password}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres:/var/lib/postgresql/data
     healthcheck:
@@ -23,12 +25,13 @@ services:
 
   backend:
     container_name: backend
-    image: parimate_bot:latest
+    image: kikikita/parimate_bot:latest
     environment:
       PG_NAME: ${POSTGRES_DB}
-      PG_USER: ${user}
-      PG_PASSWORD: ${password}
+      PG_USER: ${POSTGRES_USER}
+      PG_PASSWORD: ${POSTGRES_PASSWORD}
       PG_HOST: database
+      PG_PORT: 5432
       TOKEN: ${TOKEN}
     depends_on:
       database:
@@ -42,4 +45,3 @@ volumes:
 networks:
   postgres:
     driver: bridge
-

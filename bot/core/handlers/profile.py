@@ -21,6 +21,7 @@ router.message.filter(
 @router.message(Command(commands=["profile"]))
 @router.message(F.text.casefold().in_(['профиль']))
 async def get_profile(message: Message, state: FSMContext, bot: Bot):
+    await state.clear()
     profile = await bd_user_select(message.from_user.id)
     if profile['pari_mate_id'] is not None\
             and profile['time_pari_start'] is None:

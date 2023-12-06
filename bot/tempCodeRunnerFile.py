@@ -1,1 +1,0 @@
-await bot.send_message(settings.bots.admin_id, text='Бот запущен!')

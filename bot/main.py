@@ -6,17 +6,18 @@ import logging
 from settings import settings
 from core.utils.commands import set_commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from core.utils.notifications import send_notifications
+from core.utils.notifications import (
+    send_notifications, change_time_find, last_day_notify)
 from core.middlewares.scheduler import SchedulerMiddleware
 
 
 async def start_bot(bot: Bot):
     await set_commands(bot)
-    await bot.send_message(settings.bots.admin_id, text='Бот запущен!')
+    # await bot.send_message(settings.bots.admin_id, text='Бот запущен!')
 
 
-async def stop_bot(bot: Bot):
-    await bot.send_message(settings.bots.admin_id, text='Бот остановлен!')
+# async def stop_bot(bot: Bot):
+#     # await bot.send_message(settings.bots.admin_id, text='Бот остановлен!')
 
 
 async def start():
@@ -29,16 +30,21 @@ async def start():
 
     dp.update.middleware.register(SchedulerMiddleware(scheduler))
     dp.startup.register(start_bot)
-    dp.shutdown.register(stop_bot)
+    # dp.shutdown.register(stop_bot)
 
     dp.include_routers(basic.router, registration.router,
-                       habit.router, pari.router, events.router,
-                       profile.router)
+                       profile.router, pari.router,
+                       habit.router, events.router,
+                       )
     dp.include_router(echo.router)
     dp.include_router(group_games.router)
 
     scheduler.add_job(send_notifications, trigger='interval',
                       hours=1, start_date='2023-11-10 00:00:00',
+                      kwargs={'bot': bot})
+    scheduler.add_job(change_time_find, trigger='interval',
+                      minutes=2)
+    scheduler.add_job(last_day_notify, trigger='cron', hour='20', minute='15',
                       kwargs={'bot': bot})
     try:
         scheduler.start()

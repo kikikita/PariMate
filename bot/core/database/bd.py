@@ -11,14 +11,17 @@ from apscheduler.jobstores.base import JobLookupError
 from core.utils.states import Habit
 from settings import settings
 import datetime as dt
+import time
+import os
 
 
 config = dotenv_values('.env')
 
-USER = config['user']
-PSWD = config['password']
-DB = config['database']
-HOST = config['host']
+USER = config['POSTGRES_USER']
+PSWD = config['POSTGRES_PASSWORD']
+DB = config['POSTGRES_DB']
+# HOST = config['POSTGRES_HOST']
+HOST = os.environ['PG_HOST']
 
 
 async def bd_interaction(user_id: int, values: list):
@@ -68,11 +71,11 @@ async def bd_notify_update(user_id: int, time_list,
     if result:
         await conn.execute('''DELETE FROM parimate_notifications
                            WHERE user_id = $1''', user_id)
-    for time in time_list:
+    for time_ in time_list:
         await conn.execute('''INSERT INTO parimate_notifications
                             (user_id, date)
                             VALUES($1, $2)
-                            ''', user_id, time)
+                            ''', user_id, time_)
     if notify_day and notify_time:
         await conn.execute('''UPDATE parimate_users SET
                            habit_notification_day = $2,
@@ -107,7 +110,7 @@ async def bd_habit_update(user_id: int, values: list):
                        int(values['habit_frequency']),
                        values['habit_mate_sex'], values['time_find_start'],
                        str(values['habit_notification_day']),
-                       values['habit_notification_time']
+                       str(values['habit_notification_time'])
                        )
     await conn.close()
 
@@ -152,14 +155,14 @@ async def bd_status_clear(user_id: int, pari_end_cause: Optional[str] = None):
                     UPDATE parimate_users SET pari_mate_id = NULL,
                     pari_chat_link = NULL, time_find_start = NULL,
                     time_pari_start = NULL, time_pari_end = NULL,
-                    pari_reports = Null, habit_notification_day = NULL,
-                    habit_notification_time = NULL,
+                    pari_reports = Null,
                     pari_end_cause = $2
                     WHERE user_id = $1
                     ''', user_id, pari_end_cause)
     await conn.execute(
                 '''
-                UPDATE parimate_users SET pari_mate_id = NULL
+                UPDATE parimate_users SET pari_mate_id = NULL,
+                time_find_start = NOW()
                 WHERE user_id = $1
                 ''', pari_mate_id)
     await bd_user_notify_delete(user_id)
@@ -182,7 +185,7 @@ async def bd_mate_update(user_id: int, mate_id: int):
     await conn.close()
 
 
-async def bd_chat_delete(user_id: int):
+async def bd_chat_delete(user_id: int, bot: Bot | None = None):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
     result = await conn.fetchrow('''
@@ -191,26 +194,45 @@ async def bd_chat_delete(user_id: int):
                     LIMIT 1
                     ''', user_id)
     if result is not None:
-        if result['user_1'] == user_id and result['user_2'] is not None:
+        if result['user_1'] == user_id and result['user_2'] is not None\
+                and result['user_2'] != 1:
             await conn.execute(
                         '''
                         UPDATE parimate_chats SET
-                        ban_list = user_1, user_1 = user_2, user_2 = Null
+                        ban_list = user_1, user_1 = user_2, user_2 = 1
                         WHERE user_1 = $1
                         ''', user_id)
-        elif result['user_1'] == user_id and result['user_2'] is None:
+        elif result['user_1'] == user_id and result['user_2'] is not None\
+                and result['user_2'] == 1:
+            if bot and result['ban_list'] is not None:
+                await bot.unban_chat_member(result['chat_id'],
+                                            result['user_id'])
+            await conn.execute(
+                        '''
+                        UPDATE parimate_chats SET
+                        user_1 = Null, user_2 = Null,
+                        time_start = Null, time_end = Null,
+                        ban_list = Null
+                        WHERE user_1 = $1
+                        ''', user_id)
+        elif result['user_1'] == user_id\
+                and (result['user_2'] is None or result['user_2'] == 1):
+            if bot and result['ban_list'] is not None:
+                await bot.unban_chat_member(result['chat_id'],
+                                            result['user_id'])
             await conn.execute(
                         '''
                         UPDATE parimate_chats SET
                         user_1 = Null,
-                        time_start = Null, time_end = Null
+                        time_start = Null, time_end = Null,
+                        ban_list = Null
                         WHERE user_1 = $1
                         ''', user_id)
         elif result['user_2'] == user_id:
             await conn.execute(
                         '''
                         UPDATE parimate_chats SET ban_list = user_2,
-                        user_2 = Null
+                        user_2 = 1
                         WHERE user_2 = $1
                         ''', user_id)
     return
@@ -237,8 +259,36 @@ async def bd_check_cancel(message: Message, scheduler: AsyncIOScheduler):
             return
 
 
-async def bd_mate_find(message: Message, values,
-                       scheduler: AsyncIOScheduler, state: FSMContext):
+async def send_mate_msg(user: dict,
+                        mate: dict,
+                        state: FSMContext,
+                        bot: Bot,
+                        ):
+    await state.set_state(Habit.mate_find)
+    await bot.send_message(
+        user["user_id"],
+        'Партнер по привычке найден:' +
+        f'\n{mate["name"]}, {mate["age"]}' +
+        f'\nЦель: {mate["habit_choice"].lower()} ' +
+        f'{mate["habit_frequency"]} раз(-а) в неделю.',
+        reply_markup=pari_choice())
+    try:
+        await bot.send_message(
+            mate["user_id"],
+            'Партнер по привычке найден:' +
+            f'\n{user["name"]}, {user["age"]}' +
+            f'\nЦель: {user["habit_choice"].lower()} ' +
+            f'{user["habit_frequency"]} раз(-а) в неделю.',
+            reply_markup=pari_choice())
+    except Exception:
+        pass
+    return
+
+
+async def bd_mate_find(message: Message,
+                       scheduler: AsyncIOScheduler, state: FSMContext,
+                       bot: Bot):
+    values = await bd_user_select(message.from_user.id)
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
     if values['habit_mate_sex'] == 'Не имеет значения':
@@ -256,19 +306,23 @@ async def bd_mate_find(message: Message, values,
                         values['habit_category'],
                         values['sex'])
         await conn.close()
-        if result is None:
+        if result is None or values['time_find_start'] is None:
             return
-        elif result['time_find_start'] > values['time_find_start']:
-            await bd_mate_update(message.from_user.id, result['user_id'])
         else:
-            # await message.answer('Уже есть партнер раньше тебя')
-            pari_mate = await bd_get_pari_mate_id(message.from_user.id)
-            if pari_mate['pari_mate_id'] is not None:
-                result = await bd_user_select(pari_mate['pari_mate_id'])
+            mate_find = scheduler.get_job(f'send_mate_msg_{result["user_id"]}')
+            if result['time_find_start'] > values['time_find_start']:
+                await bd_mate_update(message.from_user.id, result['user_id'])
+            elif result['time_find_start'] < values['time_find_start']\
+                    and not mate_find:
+                await bd_mate_update(message.from_user.id, result['user_id'])
             else:
-                # await message.answer('Повторим поиск')
-                # await message.answer(f'{pari_mate}')
-                return
+                # await message.answer('Уже есть партнер раньше тебя')
+                pari_mate = await bd_get_pari_mate_id(message.from_user.id)
+                if pari_mate['pari_mate_id'] is not None:
+                    result = await bd_user_select(pari_mate['pari_mate_id'])
+                else:
+                    # await message.answer('Повторим поиск')
+                    return
     else:
         result = await conn.fetchrow(
                         '''
@@ -284,32 +338,36 @@ async def bd_mate_find(message: Message, values,
                         ''', message.from_user.id,
                         values['habit_category'],
                         values['habit_mate_sex'], values['sex'])
-        if result is None:
+        if result is None or values['time_find_start'] is None:
             return
-        elif result['time_find_start'] > values['time_find_start']:
-            await bd_mate_update(message.from_user.id, result['user_id'])
         else:
-            # await message.answer('Уже есть партнер раньше тебя')
-            pari_mate = await bd_get_pari_mate_id(message.from_user.id)
-            if pari_mate['pari_mate_id'] is not None:
-                result = await bd_user_select(pari_mate['pari_mate_id'])
+            mate_find = scheduler.get_job(f'send_mate_msg_{result["user_id"]}')
+            if result['time_find_start'] > values['time_find_start']:
+                await bd_mate_update(message.from_user.id, result['user_id'])
+            elif result['time_find_start'] < values['time_find_start']\
+                    and not mate_find:
+                await bd_mate_update(message.from_user.id, result['user_id'])
             else:
-                # await message.answer('Повторим поиск')
                 return
     await state.update_data(mate_id=result["user_id"])
-    await message.answer(
-        'Партнер по привычке найден:' +
-        f'\n{result["name"]}, {result["age"]}' +
-        f'\nЦель: {result["habit_choice"].lower()} ' +
-        f'{result["habit_frequency"]} раз в неделю.',
-        reply_markup=pari_choice())
-    await state.set_state(Habit.mate_find)
-
-    scheduler.pause_job(f'mate_find_{message.from_user.id}')
-    scheduler.add_job(bd_check_cancel, trigger='interval',
-                      seconds=5, id=f'mate_cancel_{message.from_user.id}',
-                      kwargs={'message': message,
-                              'scheduler': scheduler})
+    await send_mate_msg(values, result, state, bot)
+    get_find_job = scheduler.get_job(f'mate_find_{message.from_user.id}')
+    get_cancel_job = scheduler.get_job(f'mate_cancel_{message.from_user.id}')
+    if get_find_job and not get_cancel_job:
+        scheduler.pause_job(f'mate_find_{message.from_user.id}')
+        scheduler.add_job(bd_check_cancel, trigger='interval',
+                          seconds=5, id=f'mate_cancel_{message.from_user.id}',
+                          kwargs={'message': message,
+                                  'scheduler': scheduler})
+    elif get_find_job and get_cancel_job:
+        scheduler.pause_job(f'mate_find_{message.from_user.id}')
+    elif get_cancel_job and not get_find_job:
+        pass
+    else:
+        scheduler.add_job(bd_check_cancel, trigger='interval',
+                          seconds=5, id=f'mate_cancel_{message.from_user.id}',
+                          kwargs={'message': message,
+                                  'scheduler': scheduler})
 
 
 async def bd_chat_create(chat_id: int, chat_link: str):
@@ -389,12 +447,23 @@ async def bd_chat_update(user_id: int, mate_id: int,
     if result is not None:
         if result['user_1'] == mate_id and result['user_2'] == user_id:
             for user_id in (result['user_1'], result['user_2']):
+                get_chat_job = scheduler.get_job(f'chat_find_{user_id}')
+                get_cancel_job = scheduler.get_job(f'mate_cancel_{user_id}')
+                get_mate_job = scheduler.get_job(f'mate_find_{user_id}')
+                if get_chat_job:
+                    scheduler.remove_job(f'chat_find_{user_id}')
+                if get_cancel_job:
+                    scheduler.remove_job(f'mate_cancel_{user_id}')
+                if get_mate_job:
+                    scheduler.remove_job(f'mate_find_{user_id}')
                 try:
                     await bot.send_message(
                         user_id,
                         'Напарник подтвердил пари!'
                         '\n\nВот ссылка на совместный чат:' +
-                        f'{result["chat_link"]}',
+                        f'{result["chat_link"]}' +
+                        '\n\nЖми /help, чтобы ознакомиться ' +
+                        'с функционалом бота',
                         reply_markup=ReplyKeyboardRemove()
                     )
                 except Exception:
@@ -406,16 +475,14 @@ async def bd_chat_update(user_id: int, mate_id: int,
             await conn.execute(
                 '''
                 UPDATE parimate_users SET pari_chat_link = $3,
-                time_pari_start = $4, time_pari_end = $5
+                time_pari_start = $4, time_pari_end = $5,
+                time_find_start = Null
                 WHERE user_id IN ($1, $2)
                 ''', result['user_1'], result['user_2'],
                 result["chat_link"], time_start,
                 time_end)
             await state.clear()
             await conn.close()
-            scheduler.remove_job(f'chat_find_{user_id}')
-            scheduler.remove_job(f'mate_cancel_{user_id}')
-            scheduler.remove_job(f'mate_find_{user_id}')
     else:
         await bot.send_message(settings.bots.admin_id,
                                text='Нет чатов для пользователей')
@@ -502,3 +569,84 @@ async def bd_notifications_select(time):
 
     await conn.close()
     return rows
+
+
+async def bd_find_time_select():
+    conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
+                                 host=HOST)
+    rows = await conn.fetch('''
+                    SELECT user_id FROM parimate_users
+                    WHERE ((time_find_start is not NULL)
+                    AND (time_find_start < NOW() - INTERVAL '2' MINUTE)
+                    AND (time_pari_start is NULL))
+                    ''')
+
+    await conn.close()
+    return rows
+
+
+async def bd_find_time_update(user_id: int):
+    conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
+                                 host=HOST)
+    await conn.execute('''
+                    UPDATE parimate_users SET
+                    time_find_start = NOW(),
+                    habit_category = 'all'
+                    WHERE user_id = $1
+                    ''', user_id)
+
+    await conn.close()
+
+
+async def bd_get_chat_id(chat_link: str | None = None,
+                         user_id: str | None = None):
+    conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
+                                 host=HOST)
+    if chat_link:
+        result = await conn.fetchrow('''
+                        SELECT chat_id FROM parimate_chats
+                        WHERE chat_link = $1
+                        ''', chat_link)
+    elif user_id:
+        result = await conn.fetchrow('''
+                        SELECT chat_id FROM parimate_chats
+                        WHERE user_1 = $1 or user_2 = $1
+                        ''', user_id)
+    else:
+        await conn.close()
+        return
+    await conn.close()
+    return result
+
+
+async def bd_report_delete(user_id: int):
+    conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
+                                 host=HOST)
+    await conn.execute('''
+                    UPDATE parimate_reports SET
+                    status = 'deleted'
+                    WHERE user_id = $1
+                    ''', user_id)
+
+    await conn.close()
+
+
+async def bd_last_day_select():
+    conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
+                                 host=HOST)
+    bad_result = await conn.fetch('''
+                    SELECT * FROM parimate_users
+                    WHERE DATE(time_pari_end) = DATE(NOW())
+                    AND pari_reports < (habit_frequency/2)
+                    ''')
+    time.sleep(0.5)
+    good_result = await conn.fetch('''
+                    UPDATE parimate_users SET
+                    habit_week = COALESCE(habit_week, 0) + 1,
+                    pari_reports = 0
+                    WHERE DATE(time_pari_end) = DATE(NOW())
+                    AND pari_reports >= (habit_frequency/2)
+                    RETURNING *
+                    ''')
+    await conn.close()
+    return good_result, bad_result

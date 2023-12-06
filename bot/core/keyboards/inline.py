@@ -3,11 +3,11 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.filters.callback_data import CallbackData
 
 
-def get_pari(pari_link):
+def get_pari(pari_link: str, user_id: int):
     builder = InlineKeyboardBuilder()
     builder.button(
         text="Досрочно завершить пари",
-        callback_data="pari_сancel"
+        callback_data=f"pari_сancel_{user_id}"
     )
     builder.button(
         text="Перейти в совместный чат",
@@ -15,85 +15,99 @@ def get_pari(pari_link):
     )
     builder.button(
         text="Отчеты напарника",
-        callback_data="mate_report"
+        callback_data=f"mate_report_{user_id}"
     )
     builder.button(
         text="Подтвердить выполнение привычки",
-        callback_data="update_report"
+        callback_data=f"update_report_{user_id}"
     )
 
     builder.adjust(1, 1)
     return builder.as_markup()
 
 
-def get_report():
+def get_report(user_id: int):
     builder = InlineKeyboardBuilder()
     builder.button(
         text="Отправить на проверку",
-        callback_data="send_report"
+        callback_data=f"send_report_{user_id}"
     )
     builder.button(
         text="Добавить фото",
-        callback_data="update_report"
+        callback_data=f"update_report_{user_id}"
     )
     builder.button(
         text="Отмена",
-        callback_data="сancel_no"
+        callback_data=f"сancel_no_{user_id}"
     )
     builder.adjust(1, 1, 1)
     return builder.as_markup()
 
 
-def cancel_approve():
+def cancel_approve(user_id: int):
     builder = InlineKeyboardBuilder()
     builder.button(
         text="Да",
-        callback_data="сancel_yes"
+        callback_data=f"сancel_yes_{user_id}"
     )
     builder.button(
         text="Нет",
-        callback_data="сancel_no"
+        callback_data=f"сancel_no_{user_id}"
     )
 
     builder.adjust(2)
     return builder.as_markup()
 
 
-def mate_report():
+def tech_report(user_id: int):
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="Загрузить отчет",
+        callback_data=f"mate_report_tech_{user_id}"
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def mate_report(user_id: int):
     builder = InlineKeyboardBuilder()
     builder.button(
         text="Отклонить",
-        callback_data="report_reject"
+        callback_data=f"report_reject_{user_id}"
     )
     builder.button(
         text="Подтвердить",
-        callback_data="report_approve"
+        callback_data=f"report_approve_{user_id}"
     )
 
     builder.adjust(2)
     return builder.as_markup()
 
 
-def pari_report_more():
+def pari_report_more(user_id: int | None = None):
     builder = InlineKeyboardBuilder()
+    if user_id:
+        report = str(user_id)
+    else:
+        report = 'report'
     builder.button(
         text="Нет",
-        callback_data="сancel_no"
+        callback_data=f"сancel_no_{report}"
     )
     builder.button(
         text="Да",
-        callback_data="mate_report"
+        callback_data=f"mate_report_{report}"
     )
 
     builder.adjust(2)
     return builder.as_markup()
 
 
-def cancel_сancel():
+def cancel_сancel(user_id: int):
     builder = InlineKeyboardBuilder()
     builder.button(
         text="Отмена",
-        callback_data="сancel_no"
+        callback_data=f"сancel_no_{user_id}"
     )
 
     builder.adjust(1)
@@ -124,37 +138,37 @@ def get_main_menu():
     return builder.as_markup()
 
 
-def pari_report_confirm():
+def pari_report_confirm(user_id: int):
     builder = InlineKeyboardBuilder()
     builder.button(
         text="Отправить на подтверждение",
-        callback_data="send_report"
+        callback_data=f"send_report_{user_id}"
     )
     builder.button(
         text="Отмена",
-        callback_data="сancel_no"
+        callback_data=f"сancel_no_{user_id}"
     )
     builder.adjust(1, 1)
     return builder.as_markup()
 
 
-def cancel_report_reject():
+def cancel_report_reject(user_id: int):
     builder = InlineKeyboardBuilder()
     builder.button(
         text="Отмена",
-        callback_data="cancel_report_reject"
+        callback_data=f"cancel_report_reject_{user_id}"
     )
 
     builder.adjust(1)
     return builder.as_markup()
 
 
-def pari_report_from_notify():
+def pari_report_from_notify(user_id: int):
     builder = InlineKeyboardBuilder()
 
     builder.button(
         text="Подтвердить выполнение привычки",
-        callback_data="update_report"
+        callback_data=f"update_report_{user_id}"
     )
     builder.adjust(1)
     return builder.as_markup()
