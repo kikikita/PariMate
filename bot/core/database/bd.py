@@ -296,16 +296,15 @@ async def match(conn):
             filtered_users = list(
                 filter(lambda u_d: u_d['user_id'] != user['user_id'] and u_d['user_id'] not in partners and
                                    (u_d['habit_mate_sex'] == user['sex'] or
-                                    u_d['habit_mate_sex'] == 'Не имеет значения'),
+                                    u_d['habit_mate_sex'] == 'Не имеет значения')
+                                   and u_d['habit_category'] == user['habit_category'],
                        users_without_partner))
             if user['habit_mate_sex'] != 'Не имеет значения':
                 filtered_users = list(
                     filter(lambda u_d: u_d['sex'] == user['habit_mate_sex'], filtered_users)
                 )
-            filtered_users.sort(key=lambda x: (x['habit_choice'] == user['habit_choice'],
-                                               x['habit_category'] == user['habit_category'],
-                                               search_time - x['time_find_start']),
-                                reverse=True)
+            filtered_users.sort(key=lambda x: (x['habit_choice'] != user['habit_choice'],
+                                               x['time_find_start']))
             user_partner = None
             if len(filtered_users) > 0:
                 user_partner = filtered_users[0]
