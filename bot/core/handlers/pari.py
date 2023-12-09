@@ -2,9 +2,9 @@ from aiogram import Bot, Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, ContentType
 from aiogram.utils.media_group import MediaGroupBuilder
-from core.keyboards.reply import (
-    main_menu_kb, pari_report_cancel, pari_choice, pari_find, remove_kb)
+from core.keyboards.reply import remove_kb
 from core.keyboards.inline import (
+    get_main_menu, pari_find, pari_choice,
     get_pari, cancel_approve, cancel_сancel, mate_report, pari_report_more,
     cancel_report_reject, pari_report_confirm, tech_report)
 from aiogram.fsm.context import FSMContext
@@ -22,10 +22,16 @@ router = Router()
 
 
 @router.message(Command(commands=["pari"]))
-@router.message(F.text.casefold().in_(['мои пари']))
-async def pari(message: Message, state: FSMContext):
+@router.callback_query(F.data.startswith("pari"))
+# @router.message(F.text.casefold().in_(['мои пари']))
+async def pari(message: Message | CallbackQuery, state: FSMContext):
     await state.clear()
-    result = await bd_user_select(message.from_user.id)
+    user_id = message.from_user.id
+    user_name = message.from_user.first_name
+    if isinstance(message, CallbackQuery):
+        await message.answer()
+        message = message.message
+    result = await bd_user_select(user_id)
     usr_days_string = (str(result["habit_notification_day"])[1:-1]
                        .replace("'", ""))
     usr_time_string = (str(result["habit_notification_time"])[1:-1]
@@ -39,7 +45,7 @@ async def pari(message: Message, state: FSMContext):
         mate_time_string = (str(pari_mate["habit_notification_time"])[1:-1]
                             .replace("'", ""))
         await message.answer(
-            f'{message.from_user.first_name}, Активное пари c ' +
+            f'{user_name}, Активное пари c ' +
             f'{result["time_pari_start"].strftime("%d/%m/%y")} ' +
             f'по {result["time_pari_end"].strftime("%d/%m/%y")}:' +
             f'\n\nТвоя цель: {result["habit_choice"].lower()} ' +
@@ -47,21 +53,21 @@ async def pari(message: Message, state: FSMContext):
             f'\nПо этим дням: {usr_days_string}' +
             f'\nВ это время: {usr_time_string}' +
             '\nКоличество подтверждений: ' +
-            f'{result["pari_reports"] if result["pari_reports"] is not None else 0}/' +
+            f'{result["pari_reports"] if result["pari_reports"] else 0}/' +
             f'{result["habit_frequency"]}' +
             f'\n\nЦель напарника: {pari_mate["habit_choice"].lower()} ' +
             f'{pari_mate["habit_frequency"]} раз(-а) в неделю ' +
             f'\nПо этим дням: {mate_days_string}' +
             f'\nВ это время: {mate_time_string}'
             '\nКоличество подтверждений: ' +
-            f'{pari_mate["pari_reports"] if pari_mate["pari_reports"] is not None else 0}/' +
-            f'{pari_mate["habit_frequency"]}',
+            f'{pari_mate["pari_reports"] if pari_mate["pari_reports"] else 0}'
+            + f'/{pari_mate["habit_frequency"]}',
             reply_markup=get_pari(result['pari_chat_link'],
-                                  message.from_user.id)
+                                  user_id)
             )
     elif isinstance(result, dict) and result['time_pari_start'] is not None:
         await message.answer(
-            f'{message.from_user.first_name}, Активное пари c ' +
+            f'{user_name}, Активное пари c ' +
             f'{result["time_pari_start"].strftime("%d/%m/%y")} ' +
             f'по {result["time_pari_end"].strftime("%d/%m/%y")}:' +
             f'\n\nТвоя цель: {result["habit_choice"].lower()} ' +
@@ -69,11 +75,11 @@ async def pari(message: Message, state: FSMContext):
             f'\nПо этим дням: {usr_days_string}' +
             f'\nВ это время: {usr_time_string}'
             '\nКоличество подтверждений: ' +
-            f'{result["pari_reports"] if result["pari_reports"] is not None else 0}/' +
+            f'{result["pari_reports"] if result["pari_reports"] else 0}/' +
             f'{result["habit_frequency"]}' +
             '\n\nНапарник отказался от участия в пари, ищем другого...',
             reply_markup=get_pari(result['pari_chat_link'],
-                                  message.from_user.id)
+                                  user_id)
             )
     elif isinstance(result, dict) and result['pari_mate_id'] is not None\
             and result['time_pari_start'] is None:
@@ -91,11 +97,13 @@ async def pari(message: Message, state: FSMContext):
     elif result['time_find_start'] is not None\
             and result['pari_mate_id'] is None:
         await state.set_state(Habit.mate_find)
-        await message.answer('Ищем партнера по привычке...',
-                             reply_markup=pari_find())
+        await message.answer(
+            '⏳ Подбираем партнера по привычке...' +
+            '\n✉ Сообщим, как будет готово',
+            reply_markup=pari_find())
     else:
-        await message.answer('В данный момент ты не принимаешь участие в пари',
-                             reply_markup=main_menu_kb())
+        await message.answer(
+            'В данный момент ты не принимаешь участие в пари')
 
 
 @router.callback_query(F.data.startswith("update_report_"))
@@ -219,33 +227,6 @@ async def not_foto_handler(callback: CallbackQuery, state: FSMContext,
         data = await state.get_data()
         report_time = dt.datetime.now()
 
-    # if len(data['pari_report']) == 2 and data['pari_report'][0] == 'photo':
-    #     await callback.message.answer_photo(
-    #         data['pari_report'][1], 'Отчет от ' +
-    #         f'{report_time.strftime("%d/%m/%y %H:%M")} сформирован')
-
-    # elif len(data['pari_report']) == 2\
-    #         and data['pari_report'][0] == 'video':
-    #     await callback.message.answer_video(
-    #         data['pari_report'][1], caption='Отчет от ' +
-    #         f'{report_time.strftime("%d/%m/%y %H:%M")} сформирован')
-
-    # elif data['pari_report'][0] == 'video_note':
-    #     await callback.message.answer(
-    #         'Отчет от ' +
-    #         f'{report_time.strftime("%d/%m/%y %H:%M")} сформирован')
-
-    # elif data['pari_report'][0] == 'text':
-    #     await callback.message.answer(
-    #         'Отчет от ' +
-    #         f'{report_time.strftime("%d/%m/%y %H:%M")} сформирован')
-
-    # else:
-    #     media = await media_bulder(
-    #         data['pari_report'], 'Отчет от ' +
-    #         f'{report_time.strftime("%d/%m/%y %H:%M")} сформирован')
-    #     await callback.message.answer_media_group(media)
-
         await bd_pari_report_create(callback.from_user.id,
                                     str(data['pari_report']),
                                     report_time)
@@ -350,8 +331,8 @@ async def get_mate_reports(callback: CallbackQuery, state: FSMContext):
                     await callback.message.answer_media_group(media)
                     time.sleep(0.5)
                     await callback.message.answer(
-                                'Подтвердить отчет?',
-                                reply_markup=mate_report(callback.from_user.id))
+                        'Подтвердить отчет?',
+                        reply_markup=mate_report(callback.from_user.id))
 
                 await state.set_state(Pari.mate_report)
                 await state.update_data(mate_report=result,
@@ -456,21 +437,21 @@ async def reason_report_reject(message: Message, state: FSMContext, bot: Bot):
 @router.message(Pari.pari_report)
 async def wrong_report(message: Message, state: FSMContext):
     await message.delete()
-    data = await state.get_data()
-    if 'pari_report' not in data:
-        msg = await message.answer(
-            f"{message.from_user.first_name}, " +
-            "загрузи фото, подтверждающее выполнение привычки, " +
-            "либо нажми кнопку 'Отмена'",
-            reply_markup=pari_report_cancel())
-    else:
-        msg = await message.answer(
-            f"{message.from_user.first_name}, " +
-            "загрузи фото, подтверждающее выполнение привычки, " +
-            "либо нажми кнопку 'Отмена'",
-            reply_markup=pari_report_confirm(message.from_user.id))
-    data['pari_message'].append(msg)
-    await state.update_data(pari_message=data['pari_message'])
+    # data = await state.get_data()
+    # if 'pari_report' not in data:
+    #     msg = await message.answer(
+    #         f"{message.from_user.first_name}, " +
+    #         "загрузи фото, подтверждающее выполнение привычки, " +
+    #         "либо нажми кнопку 'Отмена'",
+    #         reply_markup=pari_report_cancel())
+    # else:
+    #     msg = await message.answer(
+    #         f"{message.from_user.first_name}, " +
+    #         "загрузи фото, подтверждающее выполнение привычки, " +
+    #         "либо нажми кнопку 'Отмена'",
+    #         reply_markup=pari_report_confirm(message.from_user.id))
+    # data['pari_message'].append(msg)
+    # await state.update_data(pari_message=data['pari_message'])
 
 
 @router.callback_query(F.data.startswith("pari_сancel_"))
@@ -530,7 +511,7 @@ async def pari_cancel_yes(callback: CallbackQuery, state: FSMContext):
 async def pari_cancel_end(message: Message, state: FSMContext, bot: Bot):
     await message.answer(
         "Пари завершено",
-        reply_markup=main_menu_kb())
+        reply_markup=get_main_menu())
     chat = await bd_chat_select(message.from_user.id)
     if isinstance(chat, dict):
         if message.from_user.id != settings.bots.admin_id:

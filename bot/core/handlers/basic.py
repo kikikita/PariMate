@@ -1,7 +1,7 @@
 from aiogram import Router, Bot, F
 from aiogram.filters import Command
 from aiogram.types import Message
-from core.keyboards.reply import get_start_kb, main_menu_kb
+from core.keyboards.inline import get_start_kb, get_main_menu, get_user_link
 from aiogram.fsm.context import FSMContext
 from core.database.bd import bd_chat_create, bd_get_chat_id
 from core.filters.chat_type import ChatTypeFilter
@@ -29,11 +29,13 @@ async def get_start(message: Message, state: FSMContext):
 
 @router.message(Command(commands=["menu"]),
                 ChatTypeFilter(chat_type=["private"]))
+@router.callback_query(
+    F.data.startswith("menu"), ChatTypeFilter(chat_type=["private"]))
 async def get_menu(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
             'Главное меню',
-            reply_markup=main_menu_kb()
+            reply_markup=get_main_menu()
             )
 
 
@@ -51,7 +53,8 @@ async def get_group_menu(message: Message, state: FSMContext):
 
 @router.message(Command(commands=["help"]),
                 ChatTypeFilter(chat_type=["group", "supergroup"]))
-@router.message(F.text.casefold().in_(['помощь']))
+@router.message(F.text.casefold().in_(['помощь']),
+                ChatTypeFilter(chat_type=["group", "supergroup"]))
 async def get_info(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
@@ -70,7 +73,8 @@ async def get_info(message: Message, state: FSMContext):
 
 @router.message(Command(commands=["help"]),
                 ChatTypeFilter(chat_type=["private"]))
-@router.message(F.text.casefold().in_(['помощь']))
+@router.message(F.text.casefold().in_(['помощь']),
+                ChatTypeFilter(chat_type=["private"]))
 async def get_private_info(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
@@ -102,7 +106,8 @@ async def get_private_info(message: Message, state: FSMContext):
 @router.message(Command(commands=["chat"]),
                 ChatTypeFilter(chat_type=["group", "supergroup"]))
 async def get_chat_update(message: Message, bot: Bot):
-    if message.from_user.id == settings.bots.admin_id:
+    if message.from_user.id == settings.bots.admin_id or\
+            message.from_user.id in settings.bots.moder_ids:
         chat_link = await bot.create_chat_invite_link(message.chat.id)
         info_msg = await bd_chat_create(message.chat.id, chat_link.invite_link)
         msg = await message.answer(info_msg)
@@ -141,7 +146,7 @@ async def unban(message: Message, bot: Bot):
                 chat_id = await bd_get_chat_id(chat_id)
             await bot.unban_chat_member(
                     str(chat_id), user_id)
-            await message.answer('Разбанен')
+            await message.answer(f'{user_id} разбанен')
         else:
             await message.answer('Не указан chat_id')
         await message.delete()
@@ -149,15 +154,29 @@ async def unban(message: Message, bot: Bot):
         return
 
 
-# @router.message(F.text == ('/unban_all'),
-#                 ChatTypeFilter(chat_type=["group", "supergroup"]))
-# async def unban_all(message: Message, bot: Bot):
-#     if message.from_user.id == settings.bots.admin_id:
-#         user_id = message.text.split("_")[1]
-#         chat_id = message.text.split("_")[2]
-#         await bot.unban_chat_member(
-#                 str(chat_id), user_id)
-#         await message.answer('Разбанен')
-#         await message.delete()
-#     else:
-#         return
+@router.message(F.text.startswith('/ban_'))
+async def ban(message: Message, bot: Bot):
+    if message.from_user.id == settings.bots.admin_id:
+        user_id = message.text.split("_")[1]
+        chat_id = message.text.split("_")[2]
+        if chat_id is not None:
+            if len(chat_id) > 22:
+                chat_id = await bd_get_chat_id(chat_id)
+            await bot.ban_chat_member(
+                    str(chat_id), user_id)
+            await message.answer(f'{user_id} забанен')
+        else:
+            await message.answer('Не указан chat_id')
+        await message.delete()
+    else:
+        return
+
+
+@router.message(F.text.startswith('/get_user_'))
+async def funcname(message: Message, bot: Bot):
+    if message.from_user.id == settings.bots.admin_id:
+        user_id = message.text.split("_")[2]
+        await message.answer(text=f'{user_id}',
+                             reply_markup=get_user_link(user_id))
+    else:
+        return

@@ -12,7 +12,7 @@ from core.utils.states import Habit
 from settings import settings
 import datetime as dt
 import time
-import os
+# import os
 
 
 config = dotenv_values('.env')
@@ -20,8 +20,8 @@ config = dotenv_values('.env')
 USER = config['POSTGRES_USER']
 PSWD = config['POSTGRES_PASSWORD']
 DB = config['POSTGRES_DB']
-# HOST = config['POSTGRES_HOST']
-HOST = os.environ['PG_HOST']
+HOST = config['POSTGRES_HOST']
+# HOST = os.environ['PG_HOST']
 
 
 async def bd_interaction(user_id: int, values: list):
@@ -147,10 +147,10 @@ async def bd_status_clear(user_id: int, pari_end_cause: Optional[str] = None):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
     result = await conn.fetchrow('''
-                    SELECT pari_mate_id FROM parimate_users WHERE user_id = $1
+                    SELECT * FROM parimate_users WHERE user_id = $1
                     ''', user_id)
     pari_mate_id = (dict(result))['pari_mate_id']
-    await conn.execute(
+    await conn.fetchrow(
                     '''
                     UPDATE parimate_users SET pari_mate_id = NULL,
                     pari_chat_link = NULL, time_find_start = NULL,
@@ -159,14 +159,16 @@ async def bd_status_clear(user_id: int, pari_end_cause: Optional[str] = None):
                     pari_end_cause = $2
                     WHERE user_id = $1
                     ''', user_id, pari_end_cause)
-    await conn.execute(
-                '''
-                UPDATE parimate_users SET pari_mate_id = NULL,
-                time_find_start = NOW()
-                WHERE user_id = $1
-                ''', pari_mate_id)
+    if pari_mate_id:
+        await conn.execute(
+                    '''
+                    UPDATE parimate_users SET pari_mate_id = NULL,
+                    time_find_start = NOW()
+                    WHERE user_id = $1
+                    ''', pari_mate_id)
     await bd_user_notify_delete(user_id)
     await conn.close()
+    return result
 
 
 async def bd_mate_update(user_id: int, mate_id: int):
@@ -316,13 +318,7 @@ async def bd_mate_find(message: Message,
                     and not mate_find:
                 await bd_mate_update(message.from_user.id, result['user_id'])
             else:
-                # await message.answer('Уже есть партнер раньше тебя')
-                pari_mate = await bd_get_pari_mate_id(message.from_user.id)
-                if pari_mate['pari_mate_id'] is not None:
-                    result = await bd_user_select(pari_mate['pari_mate_id'])
-                else:
-                    # await message.answer('Повторим поиск')
-                    return
+                return
     else:
         result = await conn.fetchrow(
                         '''
@@ -484,7 +480,7 @@ async def bd_chat_update(user_id: int, mate_id: int,
             await state.clear()
             await conn.close()
     else:
-        await bot.send_message(settings.bots.admin_id,
+        await bot.send_message(settings.bots.tech_id,
                                text='Нет чатов для пользователей')
     await conn.close()
 
@@ -577,7 +573,7 @@ async def bd_find_time_select():
     rows = await conn.fetch('''
                     SELECT user_id FROM parimate_users
                     WHERE ((time_find_start is not NULL)
-                    AND (time_find_start < NOW() - INTERVAL '2' MINUTE)
+                    AND (time_find_start < NOW() - INTERVAL '5' MINUTE)
                     AND (time_pari_start is NULL))
                     ''')
 

@@ -1,13 +1,14 @@
 from aiogram import Bot
 from aiogram import Router, F
-from aiogram.types import Message
-from core.keyboards.reply import (
-    main_menu_kb, sex_kb, category_kb, profile, pari_choice, pari_find)
+from aiogram.types import Message, CallbackQuery
+from core.keyboards.inline import (
+    get_main_menu, sex_kb, category_kb, pari_choice, pari_find)
 from core.utils.states import Registration, Habit
 from aiogram.fsm.context import FSMContext
 from ..database.bd import bd_interaction, bd_user_select
 from core.filters.chat_type import ChatTypeFilter
 from core.handlers.profile import get_profile
+from core.handlers.find import find_start
 
 
 router = Router()
@@ -16,23 +17,30 @@ router.message.filter(
 )
 
 
-@router.message(F.text == 'Найти мотивацию')
-async def reg_start(message: Message, state: FSMContext):
-    result = await bd_user_select(message.from_user.id)
+# @router.message(F.text == 'Найти мотивацию')
+@router.callback_query(F.data.startswith("start_"))
+async def reg_start(callback: CallbackQuery, state: FSMContext):
+    action = callback.data.split("_")[1]
+    result = await bd_user_select(callback.from_user.id)
     if result is not False:
-        if result['pari_chat_link'] is None and result['pari_mate_id'] is None\
+        if result['pari_notification_time']\
+                and result['time_find_start'] is None:
+            await find_start(callback)
+        elif result['pari_notification_time'] is None\
+            and result['pari_mate_id'] is None\
                 and result['time_find_start'] is None:
             await state.set_state(Habit.habit_category)
-            await message.answer('Выбери категорию привычек:',
-                                 reply_markup=category_kb())
+            await callback.message.edit_text(
+                'Выбери категорию привычек:',
+                reply_markup=category_kb())
 
         elif result['pari_mate_id'] is not None\
                 and result['time_pari_start'] is None:
             mate = await bd_user_select(result['pari_mate_id'])
             await state.update_data(mate_id=mate["user_id"])
-            await message.answer(
+            await callback.message.answer(
                 'Мы нашли для тебя напарника, и он ожидает подверждения!')
-            await message.answer(
+            await callback.message.answer(
                 'Партнер по привычке найден:' +
                 f'\n{mate["name"]}, {mate["age"]}' +
                 f'\nЦель: {mate["habit_choice"].lower()} ' +
@@ -43,27 +51,33 @@ async def reg_start(message: Message, state: FSMContext):
                 and result['pari_mate_id'] is None\
                 and result['time_pari_start'] is None:
             await state.set_state(Habit.mate_find)
-            await message.answer('Ищем партнера по привычке...',
-                                 reply_markup=pari_find())
-        elif result['time_find_start'] is not None\
-                and result['pari_mate_id'] is None\
-                and result['time_pari_start'] is not None:
-            await message.answer(
-                'Мы уже подбираем тебе нового партнера по привычке' +
-                '\nНужно немного подождать')
+            await callback.message.answer(
+                '⏳ Подбираем партнера по привычке...' +
+                '\n✉ Сообщим, как будет готово',
+                reply_markup=pari_find())
         else:
-            await message.answer(
+            await callback.message.answer(
                 'У тебя уже есть активное пари!' +
                 '\nНайти новое можно только после завершения текущего',
-                reply_markup=main_menu_kb())
+                reply_markup=get_main_menu())
     else:
         await state.set_state(Registration.name)
-        await message.answer(
-            'Давай начнем, введи свое имя',
-            reply_markup=profile(message.from_user.first_name))
+        await callback.message.answer(
+            'Давай начнем, введи свое имя')
+    await callback.answer()
 
 
-@router.message(Registration.name)
+# @router.callback_query(Registration.name, F.data.startswith("info_"))
+# async def reg_name_callback(callback: CallbackQuery, state: FSMContext):
+#     action = callback.data.split("_")[1]
+#     await state.update_data(name=action)
+#     await state.set_state(Registration.age)
+#     await callback.message.answer(
+#         f'Приятно познакомиться, {action[0]}' +
+#         '\nСколько тебе лет?')
+
+
+@router.message(Registration.name, F.text)
 async def reg_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text)
     await state.set_state(Registration.age)
@@ -82,21 +96,25 @@ async def reg_age(message: Message, state: FSMContext):
         await message.answer('Укажи свой реальный возраст числом!')
 
 
-@router.message(Registration.sex, F.text.casefold().in_(['мужчина',
-                                                         'женщина']))
-async def reg_sex(message: Message, state: FSMContext, bot: Bot):
-    await state.update_data(sex=message.text)
+@router.callback_query(Registration.sex,
+                       F.data.startswith("sex_"))
+async def reg_sex(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    action = callback.data.split("_")[1]
+    await state.update_data(sex=action)
     data = await state.get_data()
-    user = await bd_interaction(message.from_user.id, data)
+    user = await bd_interaction(callback.from_user.id, data)
     await state.clear()
     await state.set_state(Habit.habit_category)
     if user is not None:
-        await message.answer('Данные обновлены', reply_markup=main_menu_kb())
-        await message
-        await get_profile(message, state, bot)
+        await callback.message.answer(
+            'Данные обновлены')
+        await get_profile(callback, state, bot)
     else:
-        await message.answer('Выбери категорию привычек:',
-                             reply_markup=category_kb())
+        await callback.message.delete_reply_markup()
+        await callback.message.answer(
+            'Выбери категорию привычек:',
+            reply_markup=category_kb())
+    await callback.answer()
 
 
 @router.message(Registration.sex)

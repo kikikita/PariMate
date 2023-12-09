@@ -70,7 +70,7 @@ async def send_notifications(bot: Bot):
                 text='Привет! Помнишь, ты хотел сформировать ' +
                 'новую полезную привычку? Скорее загружай ' +
                 'подтверждение. Это важный шаг на пути к успеху!',
-                reply_markup=pari_report_from_notify())
+                reply_markup=pari_report_from_notify(int(user_id['user_id'])))
     else:
         pass
 
