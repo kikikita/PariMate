@@ -11,6 +11,8 @@ from core.utils.notifications import (
     send_notifications, change_time_find, last_day_notify)
 from core.middlewares.scheduler import SchedulerMiddleware
 
+from core.database.bd import match_partners
+
 
 async def start_bot(bot: Bot):
     await set_commands(bot)
@@ -48,6 +50,8 @@ async def start():
                       minutes=5)
     scheduler.add_job(last_day_notify, trigger='cron', hour='20', minute='15',
                       kwargs={'bot': bot})
+    scheduler.add_job(match_partners, trigger='interval',
+                      seconds=30, kwargs={'bot': bot})
     try:
         scheduler.start()
         await bot.delete_webhook(drop_pending_updates=True)

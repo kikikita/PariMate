@@ -1,19 +1,18 @@
-from typing import List
-import asyncpg
-from typing import Optional
-from aiogram import Bot
-from aiogram.types import Message, ReplyKeyboardRemove
-from dotenv import dotenv_values
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from core.keyboards.reply import pari_choice, pari_find
-from aiogram.fsm.context import FSMContext
-from apscheduler.jobstores.base import JobLookupError
-from core.utils.states import Habit
-from settings import settings
 import datetime as dt
+import os
 import time
-# import os
+from typing import List
+from typing import Optional
 
+import asyncpg
+from aiogram import Bot
+from aiogram.fsm.context import FSMContext
+from aiogram.types import ReplyKeyboardRemove
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from dotenv import dotenv_values
+
+from bot.core.keyboards.reply import pari_choice
+from bot.settings import settings
 
 config = dotenv_values('.env')
 
@@ -240,33 +239,10 @@ async def bd_chat_delete(user_id: int, bot: Bot | None = None):
     return
 
 
-async def bd_check_cancel(message: Message, scheduler: AsyncIOScheduler):
-    conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
-                                 host=HOST)
-    result = await conn.fetchrow('''
-                    SELECT pari_mate_id FROM parimate_users WHERE user_id = $1
-                    ''', message.from_user.id)
-    if result['pari_mate_id'] is not None:
-        return
-
-    else:
-        await message.answer('Напарник отказался от участия в пари, ' +
-                             'уже ищем другого...',
-                             reply_markup=pari_find())
-        scheduler.resume_job(f'mate_find_{message.from_user.id}')
-        try:
-            scheduler.remove_job(f'mate_cancel_{message.from_user.id}')
-            scheduler.remove_job(f'chat_find_{message.from_user.id}')
-        except JobLookupError:
-            return
-
-
 async def send_mate_msg(user: dict,
                         mate: dict,
-                        state: FSMContext,
                         bot: Bot,
                         ):
-    await state.set_state(Habit.mate_find)
     await bot.send_message(
         user["user_id"],
         'Партнер по привычке найден:' +
@@ -287,83 +263,58 @@ async def send_mate_msg(user: dict,
     return
 
 
-async def bd_mate_find(message: Message,
-                       scheduler: AsyncIOScheduler, state: FSMContext,
-                       bot: Bot):
-    values = await bd_user_select(message.from_user.id)
+async def match(conn):
+    users_without_partner_records = await conn.fetch(
+        '''
+        SELECT * FROM parimate_users
+        WHERE pari_mate_id IS NULL
+        AND time_find_start IS NOT NULL
+        ORDER BY habit_mate_sex, time_find_start
+        ''')
+    search_time = dt.datetime.now()
+    partners = {}
+    users_without_partner = [dict(row) for row in users_without_partner_records]
+    for user in users_without_partner:
+        if user['user_id'] not in partners:
+            filtered_users = list(
+                filter(lambda u_d: u_d['user_id'] != user['user_id'] and u_d['user_id'] not in partners and
+                                   (u_d['habit_mate_sex'] == user['sex'] or
+                                    u_d['habit_mate_sex'] == 'Не имеет значения'),
+                       users_without_partner))
+            if user['habit_mate_sex'] != 'Не имеет значения':
+                filtered_users = list(
+                    filter(lambda u_d: u_d['sex'] == user['habit_mate_sex'], filtered_users)
+                )
+            filtered_users.sort(key=lambda x: (x['habit_choice'] == user['habit_choice'],
+                                               x['habit_category'] == user['habit_category'],
+                                               search_time - x['time_find_start']),
+                                reverse=True)
+            user_partner = None
+            if len(filtered_users) > 0:
+                user_partner = filtered_users[0]
+            if user_partner is not None:
+                partners[user['user_id']] = user_partner['user_id']
+                partners[user_partner['user_id']] = user['user_id']
+    return partners, users_without_partner
+
+
+async def match_partners(bot: Bot):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
-                                 host=HOST)
-    if values['habit_mate_sex'] == 'Не имеет значения':
-        result = await conn.fetchrow(
-                        '''
-                        SELECT * FROM parimate_users
-                        WHERE user_id != $1 and habit_category = $2
-                        and (habit_mate_sex = $3 or
-                        habit_mate_sex = 'Не имеет значения')
-                        and (pari_mate_id IS NULL or pari_mate_id = $1)
-                        and time_find_start IS NOT NULL
-                        ORDER BY time_find_start
-                        Limit 1
-                        ''', message.from_user.id,
-                        values['habit_category'],
-                        values['sex'])
-        await conn.close()
-        if result is None or values['time_find_start'] is None:
-            return
-        else:
-            mate_find = scheduler.get_job(f'send_mate_msg_{result["user_id"]}')
-            if result['time_find_start'] > values['time_find_start']:
-                await bd_mate_update(message.from_user.id, result['user_id'])
-            elif result['time_find_start'] < values['time_find_start']\
-                    and not mate_find:
-                await bd_mate_update(message.from_user.id, result['user_id'])
-            else:
-                return
-    else:
-        result = await conn.fetchrow(
-                        '''
-                        SELECT * FROM parimate_users
-                        WHERE user_id != $1 and habit_category = $2
-                        and sex = $3
-                        and (habit_mate_sex = $4 or
-                        habit_mate_sex = 'Не имеет значения')
-                        and (pari_mate_id IS NULL or pari_mate_id = $1)
-                        and time_find_start IS NOT NULL
-                        ORDER BY time_find_start
-                        Limit 1
-                        ''', message.from_user.id,
-                        values['habit_category'],
-                        values['habit_mate_sex'], values['sex'])
-        if result is None or values['time_find_start'] is None:
-            return
-        else:
-            mate_find = scheduler.get_job(f'send_mate_msg_{result["user_id"]}')
-            if result['time_find_start'] > values['time_find_start']:
-                await bd_mate_update(message.from_user.id, result['user_id'])
-            elif result['time_find_start'] < values['time_find_start']\
-                    and not mate_find:
-                await bd_mate_update(message.from_user.id, result['user_id'])
-            else:
-                return
-    await state.update_data(mate_id=result["user_id"])
-    await send_mate_msg(values, result, state, bot)
-    get_find_job = scheduler.get_job(f'mate_find_{message.from_user.id}')
-    get_cancel_job = scheduler.get_job(f'mate_cancel_{message.from_user.id}')
-    if get_find_job and not get_cancel_job:
-        scheduler.pause_job(f'mate_find_{message.from_user.id}')
-        scheduler.add_job(bd_check_cancel, trigger='interval',
-                          seconds=5, id=f'mate_cancel_{message.from_user.id}',
-                          kwargs={'message': message,
-                                  'scheduler': scheduler})
-    elif get_find_job and get_cancel_job:
-        scheduler.pause_job(f'mate_find_{message.from_user.id}')
-    elif get_cancel_job and not get_find_job:
-        pass
-    else:
-        scheduler.add_job(bd_check_cancel, trigger='interval',
-                          seconds=5, id=f'mate_cancel_{message.from_user.id}',
-                          kwargs={'message': message,
-                                  'scheduler': scheduler})
+                                     host=HOST)
+    partners, users = match(conn)
+    async with conn.transaction():
+        for user_id in partners:
+            mate_id = partners[user_id]
+            user = list(filter(lambda x: x == user_id, users))[0]
+            mate = list(filter(lambda x: x == mate_id, users))[0]
+
+            await conn.execute('''
+                    UPDATE parimate_users SET
+                    pari_mate_id = $2,
+                    WHERE user_id = $1
+                ''', user_id, mate_id)
+            await send_mate_msg(user, mate, bot)
+    await conn.close()
 
 
 async def bd_chat_create(chat_id: int, chat_link: str):
@@ -444,14 +395,8 @@ async def bd_chat_update(user_id: int, mate_id: int,
         if result['user_1'] == mate_id and result['user_2'] == user_id:
             for user_id in (result['user_1'], result['user_2']):
                 get_chat_job = scheduler.get_job(f'chat_find_{user_id}')
-                get_cancel_job = scheduler.get_job(f'mate_cancel_{user_id}')
-                get_mate_job = scheduler.get_job(f'mate_find_{user_id}')
                 if get_chat_job:
                     scheduler.remove_job(f'chat_find_{user_id}')
-                if get_cancel_job:
-                    scheduler.remove_job(f'mate_cancel_{user_id}')
-                if get_mate_job:
-                    scheduler.remove_job(f'mate_find_{user_id}')
                 try:
                     await bot.send_message(
                         user_id,
