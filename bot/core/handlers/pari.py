@@ -23,7 +23,6 @@ router = Router()
 
 @router.message(Command(commands=["pari"]))
 @router.callback_query(F.data.startswith("pari"))
-# @router.message(F.text.casefold().in_(['мои пари']))
 async def pari(message: Message | CallbackQuery, state: FSMContext):
     await state.clear()
     user_id = message.from_user.id

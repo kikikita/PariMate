@@ -1,5 +1,5 @@
 import datetime as dt
-import os
+# import os
 import time
 from typing import List
 from typing import Optional
@@ -267,14 +267,6 @@ async def send_mate_msg(user: dict,
             f'\nЦель: {mate["habit_choice"].lower()} ' +
             f'{mate["habit_frequency"]} раз(-а) в неделю.',
             reply_markup=pari_choice())
-    
-        # await bot.send_message(
-        #     mate["user_id"],
-        #     'Партнер по привычке найден:' +
-        #     f'\n{user["name"]}, {user["age"]}' +
-        #     f'\nЦель: {user["habit_choice"].lower()} ' +
-        #     f'{user["habit_frequency"]} раз(-а) в неделю.',
-        #     reply_markup=pari_choice())
     except Exception:
         pass
     return
@@ -288,23 +280,28 @@ async def match(conn):
         AND time_find_start IS NOT NULL
         ORDER BY habit_mate_sex, time_find_start
         ''')
-    search_time = dt.datetime.now()
+    # search_time = dt.datetime.now()
     partners = {}
-    users_without_partner = [dict(row) for row in users_without_partner_records]
+    users_without_partner = [
+        dict(row) for row in users_without_partner_records]
     for user in users_without_partner:
         if user['user_id'] not in partners:
             filtered_users = list(
-                filter(lambda u_d: u_d['user_id'] != user['user_id'] and u_d['user_id'] not in partners and
-                                   (u_d['habit_mate_sex'] == user['sex'] or
-                                    u_d['habit_mate_sex'] == 'Не имеет значения')
-                                   and u_d['habit_category'] == user['habit_category'],
-                       users_without_partner))
+                filter(
+                    lambda u_d: u_d['user_id'] != user['user_id'] and
+                    u_d['user_id'] not in partners and
+                    (u_d['habit_mate_sex'] == user['sex'] or
+                     u_d['habit_mate_sex'] == 'Не имеет значения') and
+                    u_d['habit_category'] == user['habit_category'],
+                    users_without_partner))
             if user['habit_mate_sex'] != 'Не имеет значения':
                 filtered_users = list(
-                    filter(lambda u_d: u_d['sex'] == user['habit_mate_sex'], filtered_users)
+                    filter(lambda u_d: u_d['sex'] == user['habit_mate_sex'],
+                           filtered_users)
                 )
-            filtered_users.sort(key=lambda x: (x['habit_choice'] != user['habit_choice'],
-                                               x['time_find_start']))
+            filtered_users.sort(key=lambda x:
+                                (x['habit_choice'] != user['habit_choice'],
+                                 x['time_find_start']))
             user_partner = None
             if len(filtered_users) > 0:
                 user_partner = filtered_users[0]
@@ -601,6 +598,7 @@ async def bd_last_day_select():
     good_result = await conn.fetch('''
                     UPDATE parimate_users SET
                     habit_week = COALESCE(habit_week, 0) + 1,
+                    time_pari_end = time_pari_end + INTERVAL '7 days',
                     pari_reports = 0
                     WHERE DATE(time_pari_end) = DATE(NOW())
                     AND pari_reports >= (habit_frequency/2)

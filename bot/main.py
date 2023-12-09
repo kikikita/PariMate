@@ -1,7 +1,7 @@
 from aiogram import Bot, Dispatcher
 from core.handlers import (
-    basic, registration, habit, pari, profile, 
-    find, events, echo, group_games)
+    basic, registration, habit, pari, profile,
+    find, events, echo, group_games, admin)
 import asyncio
 import logging
 from settings import settings
@@ -40,6 +40,7 @@ async def start():
                        habit.router, events.router,
                        find.router
                        )
+    dp.include_router(admin.router)
     dp.include_router(echo.router)
     dp.include_router(group_games.router)
 
