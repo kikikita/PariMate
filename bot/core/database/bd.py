@@ -6,13 +6,12 @@ from typing import Optional
 
 import asyncpg
 from aiogram import Bot
-from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import dotenv_values
 
-from bot.core.keyboards.reply import pari_choice
-from bot.settings import settings
+from core.keyboards.inline import pari_choice, pari_find
+from settings import settings
 
 config = dotenv_values('.env')
 
@@ -23,16 +22,17 @@ HOST = config['POSTGRES_HOST']
 # HOST = os.environ['PG_HOST']
 
 
-async def bd_interaction(user_id: int, values: list):
+async def bd_interaction(user_id: int, values: list, username: str):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
     try:
         await conn.execute(
                         '''
-                        INSERT INTO parimate_users(user_id, name, age, sex)
-                        VALUES($1, $2, $3, $4)''',
+                        INSERT INTO parimate_users(
+                            user_id, name, age, sex, username)
+                        VALUES($1, $2, $3, $4, $5)''',
                         user_id, values['name'], int(values['age']),
-                        values['sex'])
+                        values['sex'], username)
     except Exception:
         name = await conn.fetchval(
                         '''
@@ -114,12 +114,18 @@ async def bd_habit_update(user_id: int, values: list):
     await conn.close()
 
 
-async def bd_user_select(user_id: int):
+async def bd_user_select(user_id: int | None = None,
+                         username: str | None = None):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
-    result = await conn.fetchrow('''
-                    SELECT * FROM parimate_users WHERE user_id = $1
-                    ''', user_id)
+    if user_id:
+        result = await conn.fetchrow('''
+                        SELECT * FROM parimate_users WHERE user_id = $1
+                        ''', user_id)
+    else:
+        result = await conn.fetchrow('''
+                        SELECT * FROM parimate_users WHERE username = $1
+                        ''', username)
     await conn.close()
 
     if result is not None:
@@ -142,7 +148,8 @@ async def bd_get_pari_mate_id(user_id: int):
         return False
 
 
-async def bd_status_clear(user_id: int, pari_end_cause: Optional[str] = None):
+async def bd_status_clear(user_id: int, pari_end_cause: Optional[str] = None,
+                          bot: Optional[Bot] = None):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
     result = await conn.fetchrow('''
@@ -165,6 +172,14 @@ async def bd_status_clear(user_id: int, pari_end_cause: Optional[str] = None):
                     time_find_start = NOW()
                     WHERE user_id = $1
                     ''', pari_mate_id)
+        try:
+            await bot.send_message(
+                pari_mate_id,
+                '😔 Напарник отказался от пари, ' +
+                'уже ищем другого..',
+                reply_markup=pari_find())
+        except Exception:
+            pass
     await bd_user_notify_delete(user_id)
     await conn.close()
     return result
@@ -207,7 +222,8 @@ async def bd_chat_delete(user_id: int, bot: Bot | None = None):
                 and result['user_2'] == 1:
             if bot and result['ban_list'] is not None:
                 await bot.unban_chat_member(result['chat_id'],
-                                            result['user_id'])
+                                            result['user_id'],
+                                            only_if_banned=True)
             await conn.execute(
                         '''
                         UPDATE parimate_chats SET
@@ -243,21 +259,22 @@ async def send_mate_msg(user: dict,
                         mate: dict,
                         bot: Bot,
                         ):
-    await bot.send_message(
-        user["user_id"],
-        'Партнер по привычке найден:' +
-        f'\n{mate["name"]}, {mate["age"]}' +
-        f'\nЦель: {mate["habit_choice"].lower()} ' +
-        f'{mate["habit_frequency"]} раз(-а) в неделю.',
-        reply_markup=pari_choice())
     try:
         await bot.send_message(
-            mate["user_id"],
+            user["user_id"],
             'Партнер по привычке найден:' +
-            f'\n{user["name"]}, {user["age"]}' +
-            f'\nЦель: {user["habit_choice"].lower()} ' +
-            f'{user["habit_frequency"]} раз(-а) в неделю.',
+            f'\n{mate["name"]}, {mate["age"]}' +
+            f'\nЦель: {mate["habit_choice"].lower()} ' +
+            f'{mate["habit_frequency"]} раз(-а) в неделю.',
             reply_markup=pari_choice())
+    
+        # await bot.send_message(
+        #     mate["user_id"],
+        #     'Партнер по привычке найден:' +
+        #     f'\n{user["name"]}, {user["age"]}' +
+        #     f'\nЦель: {user["habit_choice"].lower()} ' +
+        #     f'{user["habit_frequency"]} раз(-а) в неделю.',
+        #     reply_markup=pari_choice())
     except Exception:
         pass
     return
@@ -300,17 +317,17 @@ async def match(conn):
 
 async def match_partners(bot: Bot):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
-                                     host=HOST)
-    partners, users = match(conn)
+                                 host=HOST)
+    partners, users = await match(conn)
     async with conn.transaction():
         for user_id in partners:
             mate_id = partners[user_id]
-            user = list(filter(lambda x: x == user_id, users))[0]
-            mate = list(filter(lambda x: x == mate_id, users))[0]
+            user = list(filter(lambda x: x["user_id"] == user_id, users))[0]
+            mate = list(filter(lambda x: x["user_id"] == mate_id, users))[0]
 
             await conn.execute('''
                     UPDATE parimate_users SET
-                    pari_mate_id = $2,
+                    pari_mate_id = $2
                     WHERE user_id = $1
                 ''', user_id, mate_id)
             await send_mate_msg(user, mate, bot)
@@ -351,11 +368,10 @@ async def bd_chat_select(user_id: int):
         return False
 
 
-async def bd_chat_update(user_id: int, mate_id: int,
-                         scheduler: AsyncIOScheduler,
-                         state: FSMContext, bot: Bot):
+async def bd_chat_update(user_id: int, bot: Bot, scheduler: AsyncIOScheduler):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
+    mate_id = (await bd_user_select(user_id))['pari_mate_id']
     result = await conn.fetchrow(
         '''
         WITH t2 AS (SELECT *,
@@ -394,9 +410,6 @@ async def bd_chat_update(user_id: int, mate_id: int,
     if result is not None:
         if result['user_1'] == mate_id and result['user_2'] == user_id:
             for user_id in (result['user_1'], result['user_2']):
-                get_chat_job = scheduler.get_job(f'chat_find_{user_id}')
-                if get_chat_job:
-                    scheduler.remove_job(f'chat_find_{user_id}')
                 try:
                     await bot.send_message(
                         user_id,
@@ -422,12 +435,18 @@ async def bd_chat_update(user_id: int, mate_id: int,
                 ''', result['user_1'], result['user_2'],
                 result["chat_link"], time_start,
                 time_end)
-            await state.clear()
             await conn.close()
     else:
+        scheduler.add_job(
+            bd_chat_update, 'date',
+            run_date=(dt.datetime.now() + dt.timedelta(seconds=5)),
+            kwargs={'user_id': user_id,
+                    'bot': bot,
+                    'scheduler': scheduler})
         await bot.send_message(settings.bots.tech_id,
                                text='Нет чатов для пользователей')
     await conn.close()
+    return result
 
 
 async def bd_pari_report_create(user_id: int, pari_report: List[str],
@@ -516,9 +535,9 @@ async def bd_find_time_select():
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
     rows = await conn.fetch('''
-                    SELECT user_id FROM parimate_users
+                    SELECT * FROM parimate_users
                     WHERE ((time_find_start is not NULL)
-                    AND (time_find_start < NOW() - INTERVAL '5' MINUTE)
+                    AND (time_find_start < NOW() - INTERVAL '20' MINUTE)
                     AND (time_pari_start is NULL))
                     ''')
 
@@ -526,12 +545,11 @@ async def bd_find_time_select():
     return rows
 
 
-async def bd_find_time_update(user_id: int):
+async def bd_find_category_update(user_id: int):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
     await conn.execute('''
                     UPDATE parimate_users SET
-                    time_find_start = NOW(),
                     habit_category = 'all'
                     WHERE user_id = $1
                     ''', user_id)
@@ -591,3 +609,18 @@ async def bd_last_day_select():
                     ''')
     await conn.close()
     return good_result, bad_result
+
+
+async def bd_habit_clear(user_id: int):
+    conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
+                                 host=HOST)
+    await conn.execute('''
+                    UPDATE parimate_users SET habit_category = Null,
+                    habit_choice = Null, habit_frequency = Null,
+                    habit_mate_sex = Null, time_find_start = Null,
+                    habit_notification_day = Null,
+                    habit_notification_time = Null
+                    WHERE user_id = $1
+                    ''', user_id)
+
+    await conn.close()

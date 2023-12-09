@@ -5,7 +5,7 @@ from aiogram import Bot
 from core.keyboards.inline import pari_report_from_notify
 from core.database.bd import (
     bd_notifications_select, bd_notify_delete,  bd_find_time_select,
-    bd_find_time_update, bd_last_day_select, bd_report_delete,
+    bd_find_category_update, bd_last_day_select, bd_report_delete,
     bd_status_clear, bd_chat_delete, bd_get_chat_id)
 from settings import settings
 
@@ -75,12 +75,18 @@ async def send_notifications(bot: Bot):
         pass
 
 
-async def change_time_find():
+async def change_category_find(bot: Bot):
     rows = await bd_find_time_select()
     if rows:
         data = [dict(row) for row in rows]
         for user_id in data:
-            await bd_find_time_update(user_id['user_id'])
+            await bd_find_category_update(user_id['user_id'])
+        for user in data:
+            await bot.send_message(
+                settings.bots.tech_id,
+                f'Пользователь {user["user_id"]} в поиске > 30 мин' +
+                '\nКатегория изменена на "all"'
+                f'\n\nИнфо: /get_user_{user["user_id"]}')
     return
 
 

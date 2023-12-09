@@ -243,7 +243,7 @@ def pari_choice():
         callback_data='find_accept')
     keyboard_builder.button(
         text='Отказаться',
-        callback_data='find_decline')
+        callback_data='find_cancel')
 
     keyboard_builder.adjust(1)
 
@@ -264,11 +264,13 @@ def pari_find_start():
     return keyboard_builder.as_markup()
 
 ############################################################
+
+
 def get_pari(pari_link: str, user_id: int):
     builder = InlineKeyboardBuilder()
     builder.button(
         text="Досрочно завершить пари",
-        callback_data=f"pari_сancel_{user_id}"
+        callback_data=f"сancel_pari_{user_id}"
     )
     builder.button(
         text="Перейти в совместный чат",

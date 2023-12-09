@@ -437,24 +437,9 @@ async def reason_report_reject(message: Message, state: FSMContext, bot: Bot):
 @router.message(Pari.pari_report)
 async def wrong_report(message: Message, state: FSMContext):
     await message.delete()
-    # data = await state.get_data()
-    # if 'pari_report' not in data:
-    #     msg = await message.answer(
-    #         f"{message.from_user.first_name}, " +
-    #         "загрузи фото, подтверждающее выполнение привычки, " +
-    #         "либо нажми кнопку 'Отмена'",
-    #         reply_markup=pari_report_cancel())
-    # else:
-    #     msg = await message.answer(
-    #         f"{message.from_user.first_name}, " +
-    #         "загрузи фото, подтверждающее выполнение привычки, " +
-    #         "либо нажми кнопку 'Отмена'",
-    #         reply_markup=pari_report_confirm(message.from_user.id))
-    # data['pari_message'].append(msg)
-    # await state.update_data(pari_message=data['pari_message'])
 
 
-@router.callback_query(F.data.startswith("pari_сancel_"))
+@router.callback_query(F.data.startswith("сancel_pari_"))
 async def pari_cancel(callback: CallbackQuery):
     action = callback.data.split("_")[2]
     if action == str(callback.from_user.id):
@@ -515,11 +500,14 @@ async def pari_cancel_end(message: Message, state: FSMContext, bot: Bot):
     chat = await bd_chat_select(message.from_user.id)
     if isinstance(chat, dict):
         if message.from_user.id != settings.bots.admin_id:
-            await bot.ban_chat_member(
-                str(chat['chat_id']), message.from_user.id)
-            time.sleep(1)
-            await bot.unban_chat_member(
-                str(chat['chat_id']), message.from_user.id)
+            try:
+                await bot.ban_chat_member(
+                    str(chat['chat_id']), message.from_user.id)
+                time.sleep(1)
+            except Exception:
+                pass
+            # await bot.unban_chat_member(
+            #     str(chat['chat_id']), message.from_user.id)
         if chat['user_1'] is not None and chat['user_2'] is not None:
             # mate_id = chat['user_1'] if chat['user_1']\
             #         != message.from_user.id else chat['user_2']

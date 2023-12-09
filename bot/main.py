@@ -8,7 +8,7 @@ from settings import settings
 from core.utils.commands import set_commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from core.utils.notifications import (
-    send_notifications, change_time_find, last_day_notify)
+    send_notifications, change_category_find, last_day_notify)
 from core.middlewares.scheduler import SchedulerMiddleware
 
 from core.database.bd import match_partners
@@ -46,8 +46,8 @@ async def start():
     scheduler.add_job(send_notifications, trigger='interval',
                       hours=1, start_date='2023-11-10 00:00:00',
                       kwargs={'bot': bot})
-    scheduler.add_job(change_time_find, trigger='interval',
-                      minutes=5)
+    scheduler.add_job(change_category_find, trigger='interval',
+                      minutes=30, kwargs={'bot': bot})
     scheduler.add_job(last_day_notify, trigger='cron', hour='20', minute='15',
                       kwargs={'bot': bot})
     scheduler.add_job(match_partners, trigger='interval',

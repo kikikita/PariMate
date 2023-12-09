@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from core.keyboards.inline import get_start_kb, get_main_menu, get_user_link
 from aiogram.fsm.context import FSMContext
-from core.database.bd import bd_chat_create, bd_get_chat_id
+from core.database.bd import bd_chat_create, bd_get_chat_id, bd_user_select
 from core.filters.chat_type import ChatTypeFilter
 from settings import settings
 import time
@@ -174,9 +174,24 @@ async def ban(message: Message, bot: Bot):
 
 @router.message(F.text.startswith('/get_user_'))
 async def funcname(message: Message, bot: Bot):
-    if message.from_user.id == settings.bots.admin_id:
-        user_id = message.text.split("_")[2]
-        await message.answer(text=f'{user_id}',
-                             reply_markup=get_user_link(user_id))
+    if message.from_user.id == settings.bots.admin_id or\
+            message.from_user.id in settings.bots.moder_ids:
+        try:
+            user_id = int(message.text.split("_")[2])
+            user = await bd_user_select(user_id)
+        except Exception:
+            username = message.text.split("_")[2]
+            user = await bd_user_select(username=username)
+        if user:
+            await message.answer(
+                text=f'ID: {user["user_id"]} \nUsername: @{user["username"]}' +
+                f'\nИмя: {user["name"]}' +
+                f'\nВозраст: {user["age"]}, Пол: {user["sex"]}' +
+                f'\nПривычка: {user["habit_choice"]}' +
+                f'\nРегулярность: {user["habit_frequency"]} дней' +
+                f'\nПол партнера: {user["habit_mate_sex"]}',
+                reply_markup=get_user_link(user["user_id"]))
+        else:
+            await message.answer('Пользователь не найден')
     else:
         return
