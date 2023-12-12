@@ -91,6 +91,9 @@ async def on_user_join(event: ChatMemberUpdated):
         ' и помните, что вы здесь для того, чтобы стать лучшей версией себя!' +
         '\nДля ознакомления с доступным функционалом пари, жми /help',
         parse_mode=ParseMode.HTML)
+    await event.answer(
+        'Чтобы начать разговор с партнером, можешь задать ему вопрос, ' +
+        'зачем он хочет достичь своей цели и выработать привычку?')
 
 
 @router.chat_member(ChatMemberUpdatedFilter(IS_MEMBER >> IS_NOT_MEMBER))

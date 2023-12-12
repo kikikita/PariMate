@@ -2,10 +2,12 @@ from aiogram import Bot
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from core.keyboards.inline import (
-    sex_kb, category_kb, pari_choice, pari_find)
+    sex_kb, category_kb, pari_choice, pari_find,
+    pari_decline_accept)
 from core.utils.states import Registration, Habit
 from aiogram.fsm.context import FSMContext
-from ..database.bd import bd_interaction, bd_user_select, bd_habit_clear
+from ..database.bd import (
+    bd_interaction, bd_user_select, bd_habit_clear, bd_chat_select)
 from core.filters.chat_type import ChatTypeFilter
 from core.handlers.profile import get_profile
 from core.handlers.find import find_cancel
@@ -19,13 +21,14 @@ router.message.filter(
 
 # ИЗМЕНЕНИЕ ДАННЫХ О ПРИВЫЧКЕ
 @router.callback_query(F.data.startswith("start_change"))
-async def start_change(callback: CallbackQuery, state: FSMContext):
+async def start_change(callback: CallbackQuery, state: FSMContext, bot: Bot):
     await bd_habit_clear(callback.from_user.id)
-    await reg_start(callback, state)
+    await reg_start(callback, state, bot)
 
 
 @router.callback_query(F.data.startswith("start"))
-async def reg_start(callback: CallbackQuery, state: FSMContext):
+async def reg_start(callback: CallbackQuery, state: FSMContext,
+                    bot: Bot):
     result = await bd_user_select(callback.from_user.id)
     if result is not False:
         # ЕСЛИ ЧЕЛ НЕ ИЩЕТ ПАРИ НО У НЕГО ЕСТЬ ПРИВЫЧКА
@@ -33,8 +36,7 @@ async def reg_start(callback: CallbackQuery, state: FSMContext):
                 and result['time_find_start'] is None\
                 and result['pari_mate_id'] is None\
                 and result['time_pari_start'] is None:
-            print('МЫ ТУТ')
-            await find_cancel(callback)
+            await find_cancel(callback, bot)
         # ЕСЛИ ЧЕЛ НЕ ИЩЕТ ПАРИ И У НЕГО НЕТ ПРИВЫЧКИ
         elif result['habit_notification_time'] is None\
             and result['pari_mate_id'] is None\
@@ -46,6 +48,13 @@ async def reg_start(callback: CallbackQuery, state: FSMContext):
         # ЕСЛИ ЧЕЛ ИЩЕТ ПАРИ И ЕМУ НАШЕЛСЯ НАПАРНИК
         elif result['pari_mate_id'] is not None\
                 and result['time_pari_start'] is None:
+            chat = await bd_chat_select(callback.from_user.id)
+            if chat is not False and chat['user_1'] == callback.from_user.id:
+                await callback.message.answer(
+                    'Ты уже подтвердил пари.\nОжидаем ответа напарника...',
+                    reply_markup=pari_decline_accept())
+                await callback.answer()
+                return
             mate = await bd_user_select(result['pari_mate_id'])
             await state.update_data(mate_id=mate["user_id"])
             await callback.message.answer(

@@ -1,5 +1,5 @@
 import datetime as dt
-# import os
+import os
 import time
 from typing import List
 from typing import Optional
@@ -11,6 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import dotenv_values
 
 from core.keyboards.inline import pari_choice, pari_find
+from core.utils.date_creator import get_date_notify
 from settings import settings
 
 config = dotenv_values('.env')
@@ -18,8 +19,8 @@ config = dotenv_values('.env')
 USER = config['POSTGRES_USER']
 PSWD = config['POSTGRES_PASSWORD']
 DB = config['POSTGRES_DB']
-HOST = config['POSTGRES_HOST']
-# HOST = os.environ['PG_HOST']
+# HOST = config['POSTGRES_HOST']
+HOST = os.environ['PG_HOST']
 
 
 async def bd_interaction(user_id: int, values: list, username: str):
@@ -59,17 +60,17 @@ async def bd_user_check(user_id: int):
         return False
 
 
-async def bd_notify_update(user_id: int, time_list,
-                           notify_day: str | None = None,
+async def bd_notify_update(user_id: int, notify_day: str | None = None,
                            notify_time: str | None = None):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
-    result = await conn.fetch('''
-                    SELECT * FROM parimate_notifications WHERE user_id = $1
-                    ''', user_id)
-    if result:
-        await conn.execute('''DELETE FROM parimate_notifications
-                           WHERE user_id = $1''', user_id)
+    user = await bd_user_select(user_id)
+    time_list = get_date_notify(
+                    user['habit_notification_day'],
+                    user['habit_notification_time'])
+
+    await conn.execute('''DELETE FROM parimate_notifications
+                          WHERE user_id = $1''', user_id)
     for time_ in time_list:
         await conn.execute('''INSERT INTO parimate_notifications
                             (user_id, date)
@@ -252,6 +253,8 @@ async def bd_chat_delete(user_id: int, bot: Bot | None = None):
                         user_2 = 1
                         WHERE user_2 = $1
                         ''', user_id)
+        else:
+            return
     return
 
 
@@ -323,7 +326,8 @@ async def match_partners(bot: Bot):
 
             await conn.execute('''
                     UPDATE parimate_users SET
-                    pari_mate_id = $2
+                    pari_mate_id = $2,
+                    time_find_start = NOW()
                     WHERE user_id = $1
                 ''', user_id, mate_id)
             await send_mate_msg(user, mate, bot)
@@ -530,15 +534,25 @@ async def bd_notifications_select(time):
 async def bd_find_time_select():
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
-    rows = await conn.fetch('''
+    long_time_find = await conn.fetch('''
                     SELECT * FROM parimate_users
                     WHERE ((time_find_start is not NULL)
-                    AND (time_find_start < NOW() - INTERVAL '20' MINUTE)
+                    AND (time_find_start < NOW() - INTERVAL '30' MINUTE)
                     AND (time_pari_start is NULL))
+                    AND pari_mate_id is NULL
                     ''')
-
+    ignoring = await conn.fetch('''
+                    SELECT user_id
+                    FROM parimate_users
+                    WHERE ((time_find_start is not NULL)
+                    AND (time_find_start < NOW() - INTERVAL '30' MINUTE)
+                    AND (time_pari_start is NULL))
+                    AND pari_mate_id is NOT NULL
+                    AND user_id not in (
+                    SELECT user_1 FROM parimate_chats WHERE user_1 IS NOT NULL)
+                    ''')
     await conn.close()
-    return rows
+    return long_time_find, ignoring
 
 
 async def bd_find_category_update(user_id: int):
@@ -582,6 +596,21 @@ async def bd_report_delete(user_id: int):
                     status = 'deleted'
                     WHERE user_id = $1
                     ''', user_id)
+
+    await conn.close()
+
+
+async def bd_report_ignore():
+    conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
+                                 host=HOST)
+    await conn.execute('''
+                    SELECT DISTINCT pr.user_id, pu.pari_mate_id
+                    FROM parimate_reports pr
+                    JOIN parimate_users pu ON pr.user_id = pu.user_id
+                    WHERE status = 'waiting'
+                    AND (date < NOW() - INTERVAL '2' DAY)
+                    AND pari_mate_id is not Null
+                    ''')
 
     await conn.close()
 

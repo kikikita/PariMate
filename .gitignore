@@ -161,3 +161,4 @@ cython_debug/
 
 #Temp files
 test.ipynb
+.vscode/

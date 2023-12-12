@@ -6,12 +6,10 @@ from core.keyboards.inline import (
 from core.utils.states import Habit
 from aiogram.fsm.context import FSMContext
 import datetime as dt
-from core.database.bd import (
-    bd_habit_update, bd_notify_update)
+from core.database.bd import bd_habit_update
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime
 from core.filters.chat_type import ChatTypeFilter
-from core.utils.notifications import get_date_notify
 
 
 router = Router()
@@ -215,10 +213,6 @@ async def habit_mate_sex(callback: CallbackQuery, state: FSMContext,
     await state.update_data(habit_mate_sex=action,
                             time_find_start=datetime.now())
     data = await state.get_data()
-    notification_dates = get_date_notify(
-            data['habit_notification_day'],
-            data['habit_notification_time'])
-    await bd_notify_update(callback.from_user.id, notification_dates)
     await bd_habit_update(callback.from_user.id, data)
     await callback.message.edit_text(
         '⏳ Подбираем партнера по привычке...' +

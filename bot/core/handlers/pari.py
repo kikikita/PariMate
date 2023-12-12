@@ -6,7 +6,8 @@ from core.keyboards.reply import remove_kb
 from core.keyboards.inline import (
     get_main_menu, pari_find, pari_choice,
     get_pari, cancel_approve, cancel_сancel, mate_report, pari_report_more,
-    cancel_report_reject, pari_report_confirm, tech_report)
+    cancel_report_reject, pari_report_confirm, tech_report,
+    pari_decline_accept)
 from aiogram.fsm.context import FSMContext
 from core.utils.states import Pari, Habit
 from core.database.bd import (
@@ -82,6 +83,12 @@ async def pari(message: Message | CallbackQuery, state: FSMContext):
             )
     elif isinstance(result, dict) and result['pari_mate_id'] is not None\
             and result['time_pari_start'] is None:
+        chat = await bd_chat_select(user_id)
+        if chat is not False and chat['user_1'] == user_id:
+            await message.answer(
+                'Ты уже подтвердил пари.\nОжидаем ответа напарника...',
+                reply_markup=pari_decline_accept())
+            return
         mate = await bd_user_select(result['pari_mate_id'])
         await state.update_data(mate_id=mate["user_id"])
         await message.answer(

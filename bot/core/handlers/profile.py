@@ -4,8 +4,8 @@ from aiogram.types import CallbackQuery, Message
 from core.filters.chat_type import ChatTypeFilter
 from core.keyboards.inline import profile_kb, pari_choice
 from aiogram.fsm.context import FSMContext
-from core.utils.states import Habit, Registration
-from core.database.bd import bd_user_select
+from core.utils.states import Registration
+from core.database.bd import bd_user_select, bd_chat_select
 
 
 router = Router()
@@ -25,8 +25,10 @@ async def get_profile(message: Message | CallbackQuery,
         await message.answer()
         message = message.message
     profile = await bd_user_select(user_id)
+    chat = await bd_chat_select(user_id)
     if profile['pari_mate_id'] is not None\
-            and profile['time_pari_start'] is None:
+            and profile['time_pari_start'] is None\
+            and chat['user_1'] != user_id:
         mate = await bd_user_select(profile['pari_mate_id'])
         await state.update_data(mate_id=mate["user_id"])
         await message.answer(
@@ -37,7 +39,7 @@ async def get_profile(message: Message | CallbackQuery,
             f'\nЦель: {mate["habit_choice"].lower()} ' +
             f'{mate["habit_frequency"]} раз в неделю.',
             reply_markup=pari_choice())
-        await state.set_state(Habit.mate_find)
+        return
     else:
         if profile['habit_notification_time'] is not None:
             days_string = (str(profile["habit_notification_day"])[1:-1]

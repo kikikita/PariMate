@@ -229,7 +229,7 @@ def pari_find():
     keyboard_builder = InlineKeyboardBuilder()
     keyboard_builder.button(
         text='Отменить поиск',
-        callback_data='find_cancel')
+        callback_data='find_cancel_cancel')
 
     keyboard_builder.adjust(1)
 
@@ -243,7 +243,18 @@ def pari_choice():
         callback_data='find_accept')
     keyboard_builder.button(
         text='Отказаться',
-        callback_data='find_cancel')
+        callback_data='find_cancel_reject')
+
+    keyboard_builder.adjust(1)
+
+    return keyboard_builder.as_markup()
+
+
+def pari_decline_accept():
+    keyboard_builder = InlineKeyboardBuilder()
+    keyboard_builder.button(
+        text='Отменить подтверждение',
+        callback_data='find_cancel_reject')
 
     keyboard_builder.adjust(1)
 
@@ -258,6 +269,17 @@ def pari_find_start():
     keyboard_builder.button(
         text='Изменить данные о привычке',
         callback_data='start_change')
+
+    keyboard_builder.adjust(1)
+
+    return keyboard_builder.as_markup()
+
+
+def pari_find_restart():
+    keyboard_builder = InlineKeyboardBuilder()
+    keyboard_builder.button(
+        text='Возобновить поиск',
+        callback_data='find_start')
 
     keyboard_builder.adjust(1)
 

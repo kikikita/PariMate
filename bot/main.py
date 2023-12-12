@@ -16,11 +16,11 @@ from core.database.bd import match_partners
 
 async def start_bot(bot: Bot):
     await set_commands(bot)
-    # await bot.send_message(settings.bots.admin_id, text='Бот запущен!')
+    await bot.send_message(settings.bots.admin_id, text='Бот запущен!')
 
 
-# async def stop_bot(bot: Bot):
-#     await bot.send_message(settings.bots.admin_id, text='Бот остановлен!')
+async def stop_bot(bot: Bot):
+    await bot.send_message(settings.bots.admin_id, text='Бот остановлен!')
 
 
 async def start():
@@ -48,8 +48,9 @@ async def start():
                       hours=1, start_date='2023-11-10 00:00:00',
                       kwargs={'bot': bot})
     scheduler.add_job(change_category_find, trigger='interval',
-                      minutes=30, kwargs={'bot': bot})
-    scheduler.add_job(last_day_notify, trigger='cron', hour='20', minute='15',
+                      minutes=5, kwargs={'bot': bot})
+    scheduler.add_job(last_day_notify, trigger='interval',
+                      hours=2, start_date='2023-11-10 00:00:00',
                       kwargs={'bot': bot})
     scheduler.add_job(match_partners, trigger='interval',
                       seconds=30, kwargs={'bot': bot})
