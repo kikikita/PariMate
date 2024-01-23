@@ -9,7 +9,7 @@ from core.keyboards.inline import (
     cancel_report_reject, pari_report_confirm, tech_report,
     pari_decline_accept)
 from aiogram.fsm.context import FSMContext
-from core.utils.states import Pari, Habit
+from core.utils.states import Pari, Habit, Registration
 from core.database.bd import (
     bd_user_select, bd_status_clear, bd_chat_delete, bd_chat_select,
     bd_pari_report_create, bd_pari_report_get, bd_pari_report_update,
@@ -32,6 +32,11 @@ async def pari(message: Message | CallbackQuery, state: FSMContext):
         await message.answer()
         message = message.message
     result = await bd_user_select(user_id)
+    if result is False:
+        await state.set_state(Registration.name)
+        await message.answer(
+            'Давай начнем, введи свое имя')
+        return
     usr_days_string = (str(result["habit_notification_day"])[1:-1]
                        .replace("'", ""))
     usr_time_string = (str(result["habit_notification_time"])[1:-1]
@@ -78,8 +83,7 @@ async def pari(message: Message | CallbackQuery, state: FSMContext):
             f'{result["pari_reports"] if result["pari_reports"] else 0}/' +
             f'{result["habit_frequency"]}' +
             '\n\nНапарник отказался от участия в пари, ищем другого...',
-            reply_markup=get_pari(result['pari_chat_link'],
-                                  user_id)
+            reply_markup=get_pari(user_id=user_id)
             )
     elif isinstance(result, dict) and result['pari_mate_id'] is not None\
             and result['time_pari_start'] is None:
@@ -503,31 +507,19 @@ async def pari_cancel_end(message: Message, state: FSMContext, bot: Bot):
     await message.answer(
         "Пари завершено",
         reply_markup=get_main_menu())
-    chat = await bd_chat_select(message.from_user.id)
-    if isinstance(chat, dict):
-        if message.from_user.id != settings.bots.admin_id:
-            try:
-                await bot.ban_chat_member(
-                    str(chat['chat_id']), message.from_user.id)
-                time.sleep(1)
-            except Exception:
-                pass
-            # await bot.unban_chat_member(
-            #     str(chat['chat_id']), message.from_user.id)
-        if chat['user_1'] is not None and chat['user_2'] is not None:
-            # mate_id = chat['user_1'] if chat['user_1']\
-            #         != message.from_user.id else chat['user_2']
-            try:
-                await bot.send_message(
-                    str(chat['chat_id']),
-                    'К сожалению, ваш напарник досрочно завершил пари(' +
-                    '\nОднако, это не повод следовать его примеру! ' +
-                    'Продолжайте отправлять подтверждения своих привычек, ' +
-                    'а мы заменим вашего напарника!')
-            except Exception:
-                pass
+    user = await bd_user_select(message.from_user.id)
+    if user['pari_mate_id']:
+        try:
+            await bot.send_message(
+                user['pari_mate_id'],
+                '❗ К сожалению, ваш напарник досрочно завершил пари(' +
+                '\nОднако, это не повод следовать его примеру! ' +
+                'Продолжайте отправлять подтверждения своих привычек ' +
+                'через интерфейс бота, а мы заменим вашего напарника!')
+        except Exception:
+            pass
 
     await state.clear()
     await bd_report_delete(message.from_user.id)
     await bd_status_clear(message.from_user.id, message.text)
-    await bd_chat_delete(message.from_user.id, bot)
+    await bd_chat_delete(message.from_user.id, bot=bot)

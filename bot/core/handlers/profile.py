@@ -16,7 +16,6 @@ router.message.filter(
 
 @router.message(Command(commands=["profile"]))
 @router.callback_query(F.data.startswith("profile"))
-# @router.message(F.text.casefold().in_(['профиль']))
 async def get_profile(message: Message | CallbackQuery,
                       state: FSMContext, bot: Bot):
     await state.clear()
@@ -25,6 +24,11 @@ async def get_profile(message: Message | CallbackQuery,
         await message.answer()
         message = message.message
     profile = await bd_user_select(user_id)
+    if profile is False:
+        await state.set_state(Registration.name)
+        await message.answer(
+            'Давай начнем, введи свое имя')
+        return
     chat = await bd_chat_select(user_id)
     if profile['pari_mate_id'] is not None\
             and profile['time_pari_start'] is None\

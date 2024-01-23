@@ -30,8 +30,9 @@ async def bd_interaction(user_id: int, values: list, username: str):
         await conn.execute(
                         '''
                         INSERT INTO parimate_users(
-                            user_id, name, age, sex, username)
-                        VALUES($1, $2, $3, $4, $5)''',
+                            user_id, name, age, sex, username,
+                            date_registration)
+                        VALUES($1, $2, $3, $4, $5, NOW())''',
                         user_id, values['name'], int(values['age']),
                         values['sex'], username)
     except Exception:
@@ -157,19 +158,29 @@ async def bd_status_clear(user_id: int, pari_end_cause: Optional[str] = None,
                     SELECT * FROM parimate_users WHERE user_id = $1
                     ''', user_id)
     pari_mate_id = (dict(result))['pari_mate_id']
-    await conn.fetchrow(
+    await conn.execute(
                     '''
                     UPDATE parimate_users SET pari_mate_id = NULL,
-                    pari_chat_link = NULL, time_find_start = NULL,
-                    time_pari_start = NULL, time_pari_end = NULL,
-                    pari_reports = Null,
-                    pari_end_cause = $2
+                    time_find_start = NULL
                     WHERE user_id = $1
-                    ''', user_id, pari_end_cause)
+                    ''', user_id)
+    if pari_end_cause:
+        await conn.fetchrow(
+                        '''
+                        UPDATE parimate_users SET pari_mate_id = NULL,
+                        pari_chat_link = NULL, time_find_start = NULL,
+                        time_pari_start = NULL, time_pari_end = NULL,
+                        pari_reports = Null,
+                        pari_end_cause = $2,
+                        habit_week = Null
+                        WHERE user_id = $1
+                        ''', user_id, pari_end_cause)
+        await bd_user_notify_delete(user_id)
     if pari_mate_id:
         await conn.execute(
                     '''
                     UPDATE parimate_users SET pari_mate_id = NULL,
+                    pari_chat_link = NULL,
                     time_find_start = NOW()
                     WHERE user_id = $1
                     ''', pari_mate_id)
@@ -181,7 +192,6 @@ async def bd_status_clear(user_id: int, pari_end_cause: Optional[str] = None,
                 reply_markup=pari_find())
         except Exception:
             pass
-    await bd_user_notify_delete(user_id)
     await conn.close()
     return result
 
@@ -210,52 +220,23 @@ async def bd_chat_delete(user_id: int, bot: Bot | None = None):
                     OR user_2 = $1
                     LIMIT 1
                     ''', user_id)
-    if result is not None:
-        if result['user_1'] == user_id and result['user_2'] is not None\
-                and result['user_2'] != 1:
-            await conn.execute(
-                        '''
+    until_date = dt.datetime.now() + dt.timedelta(minutes=2)
+    if result:
+        for user_id in (result['user_1'], result['user_2']):
+            if user_id and user_id != 1:
+                try:
+                    await bot.ban_chat_member(
+                        result['chat_id'],
+                        user_id,
+                        until_date=until_date)
+                except Exception:
+                    pass
+    await conn.execute('''
                         UPDATE parimate_chats SET
-                        ban_list = user_1, user_1 = user_2, user_2 = 1
-                        WHERE user_1 = $1
+                        user_1 = Null, user_2 = Null
+                        WHERE user_1 = $1 OR user_2 = $1
                         ''', user_id)
-        elif result['user_1'] == user_id and result['user_2'] is not None\
-                and result['user_2'] == 1:
-            if bot and result['ban_list'] is not None:
-                await bot.unban_chat_member(result['chat_id'],
-                                            result['user_id'],
-                                            only_if_banned=True)
-            await conn.execute(
-                        '''
-                        UPDATE parimate_chats SET
-                        user_1 = Null, user_2 = Null,
-                        time_start = Null, time_end = Null,
-                        ban_list = Null
-                        WHERE user_1 = $1
-                        ''', user_id)
-        elif result['user_1'] == user_id\
-                and (result['user_2'] is None or result['user_2'] == 1):
-            if bot and result['ban_list'] is not None:
-                await bot.unban_chat_member(result['chat_id'],
-                                            result['user_id'])
-            await conn.execute(
-                        '''
-                        UPDATE parimate_chats SET
-                        user_1 = Null,
-                        time_start = Null, time_end = Null,
-                        ban_list = Null
-                        WHERE user_1 = $1
-                        ''', user_id)
-        elif result['user_2'] == user_id:
-            await conn.execute(
-                        '''
-                        UPDATE parimate_chats SET ban_list = user_2,
-                        user_2 = 1
-                        WHERE user_2 = $1
-                        ''', user_id)
-        else:
-            return
-    return
+    await conn.close()
 
 
 async def send_mate_msg(user: dict,
@@ -422,6 +403,7 @@ async def bd_chat_update(user_id: int, bot: Bot, scheduler: AsyncIOScheduler):
                     )
                 except Exception:
                     continue
+                await bd_date_waiting_update(user_id)
 
             time_start = dt.datetime.now()
             time_end = (dt.datetime.now() + dt.timedelta(days=7))
@@ -455,10 +437,10 @@ async def bd_pari_report_create(user_id: int, pari_report: List[str],
                                  host=HOST)
     await conn.execute('''
                        INSERT INTO parimate_reports
-                       (user_id, pari_report, date, status)
-                       VALUES($1, $2, $3, $4)
+                       (user_id, pari_report, date, status, date_waiting)
+                       VALUES($1, $2, $3, $4, $5)
                        ''', user_id, pari_report, report_time,
-                       'waiting')
+                       'waiting', report_time)
     await conn.close()
 
 
@@ -568,7 +550,8 @@ async def bd_find_category_update(user_id: int):
 
 
 async def bd_get_chat_id(chat_link: str | None = None,
-                         user_id: str | None = None):
+                         user_id: str | None = None,
+                         second: bool | None = None):
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
     if chat_link:
@@ -577,10 +560,16 @@ async def bd_get_chat_id(chat_link: str | None = None,
                         WHERE chat_link = $1
                         ''', chat_link)
     elif user_id:
-        result = await conn.fetchrow('''
+        if second:
+            result = await conn.fetchrow('''
                         SELECT chat_id FROM parimate_chats
-                        WHERE user_1 = $1 or user_2 = $1
+                        WHERE user_2 = $1
                         ''', user_id)
+        else:
+            result = await conn.fetchrow('''
+                            SELECT chat_id FROM parimate_chats
+                            WHERE user_1 = $1 or user_2 = $1
+                            ''', user_id)
     else:
         await conn.close()
         return
@@ -600,19 +589,76 @@ async def bd_report_delete(user_id: int):
     await conn.close()
 
 
+async def bd_date_waiting_update(user_id: int):
+    conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
+                                 host=HOST)
+    user = await bd_user_select(user_id)
+    if user['pari_mate_id']:
+        await conn.execute('''
+                    UPDATE parimate_reports SET
+                    date_waiting = NOW()
+                    WHERE user_id = $1 AND
+                    status = 'waiting'
+                    ''', user['pari_mate_id'])
+
+    await conn.execute('''
+                    UPDATE parimate_reports SET
+                    date_waiting = NOW()
+                    WHERE user_id = $1 AND
+                    status = 'waiting'
+                    ''', user_id)
+
+    await conn.close()
+
+
 async def bd_report_ignore():
     conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
                                  host=HOST)
-    await conn.execute('''
+    ignore_1_day = await conn.fetch(
+                    '''
                     SELECT DISTINCT pr.user_id, pu.pari_mate_id
                     FROM parimate_reports pr
                     JOIN parimate_users pu ON pr.user_id = pu.user_id
-                    WHERE status = 'waiting'
-                    AND (date < NOW() - INTERVAL '2' DAY)
-                    AND pari_mate_id is not Null
+                    JOIN parimate_chats pc ON (pc.user_1 = pr.user_id
+                    OR pc.user_2 = pr.user_id)
+                    WHERE pr.status = 'waiting'
+                    AND (pr.date_waiting < NOW() - INTERVAL '1' DAY)
+                    AND pu.pari_mate_id IS NOT NULL
+                    AND (EXISTS (
+                            SELECT 1 FROM parimate_chats
+                            WHERE user_1 = pu.pari_mate_id)
+                        OR EXISTS (
+                            SELECT 1 FROM parimate_chats
+                            WHERE user_2 = pu.pari_mate_id)
+                        )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM parimate_reports pr
+                        WHERE pr.user_id = pu.user_id
+                        AND pr.date_waiting < NOW() - INTERVAL '2' DAY
+                    )
                     ''')
 
+    ignore_2_day = await conn.fetch(
+                    '''
+                    SELECT DISTINCT pr.user_id, pu.pari_mate_id
+                    FROM parimate_reports pr
+                    JOIN parimate_users pu ON pr.user_id = pu.user_id
+                    JOIN parimate_chats pc ON (pc.user_1 = pr.user_id
+                    OR pc.user_2 = pr.user_id)
+                    WHERE pr.status = 'waiting'
+                    AND (pr.date_waiting < NOW() - INTERVAL '2' DAY)
+                    AND pu.pari_mate_id IS NOT NULL
+                    AND (EXISTS (
+                            SELECT 1 FROM parimate_chats
+                            WHERE user_1 = pu.pari_mate_id)
+                        OR EXISTS (
+                            SELECT 1 FROM parimate_chats
+                            WHERE user_2 = pu.pari_mate_id)
+                        )
+                    ''')
     await conn.close()
+    return ignore_1_day, ignore_2_day
 
 
 async def bd_last_day_select():
@@ -620,8 +666,8 @@ async def bd_last_day_select():
                                  host=HOST)
     bad_result = await conn.fetch('''
                     SELECT * FROM parimate_users
-                    WHERE DATE(time_pari_end) = DATE(NOW())
-                    AND pari_reports < (habit_frequency/2)
+                    WHERE time_pari_end <= NOW()
+                    AND COALESCE(pari_reports, 0) < (habit_frequency/2)
                     ''')
     time.sleep(0.5)
     good_result = await conn.fetch('''
@@ -629,8 +675,8 @@ async def bd_last_day_select():
                     habit_week = COALESCE(habit_week, 0) + 1,
                     time_pari_end = time_pari_end + INTERVAL '7 days',
                     pari_reports = 0
-                    WHERE DATE(time_pari_end) = DATE(NOW())
-                    AND pari_reports >= (habit_frequency/2)
+                    WHERE time_pari_end <= NOW()
+                    AND COALESCE(pari_reports, 0) >= (habit_frequency/2)
                     RETURNING *
                     ''')
     await conn.close()
@@ -650,3 +696,37 @@ async def bd_habit_clear(user_id: int):
                     ''', user_id)
 
     await conn.close()
+
+
+# ################ ADMIN QUERIES ###################
+async def bd_get_statistics():
+    conn = await asyncpg.connect(user=USER, password=PSWD, database=DB,
+                                 host=HOST)
+    statistics = {}
+    statistics['in_pari'] = await conn.fetchval(
+                    '''
+                    SELECT COUNT(user_id) as CNT FROM parimate_users
+                    WHERE time_pari_start is not NULL
+                    ''')
+    statistics['in_find'] = await conn.fetchval('''
+                    SELECT COUNT(user_id) as CNT FROM parimate_users
+                    WHERE time_find_start is not NULL
+                    ''')
+    statistics['empty_chats'] = await conn.fetchval('''
+                    SELECT COUNT(chat_id) as CNT FROM parimate_chats
+                    WHERE user_1 is NULL
+                    ''')
+    statistics['users_1_week'] = await conn.fetchval('''
+                    SELECT COUNT(user_id) AS CNT FROM parimate_users
+                    WHERE habit_week = 1
+                    ''')
+    statistics['users_2_week'] = await conn.fetchval('''
+                    SELECT COUNT(user_id) AS CNT FROM parimate_users
+                    WHERE habit_week = 2
+                    ''')
+    statistics['users_3_week'] = await conn.fetchval('''
+                    SELECT COUNT(user_id) AS CNT FROM parimate_users
+                    WHERE habit_week >= 3
+                    ''')
+    await conn.close()
+    return statistics

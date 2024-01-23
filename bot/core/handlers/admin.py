@@ -1,3 +1,4 @@
+import datetime as dt
 from aiogram import Router, Bot, F
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -5,7 +6,7 @@ from core.filters.chat_type import ChatTypeFilter
 from core.keyboards.inline import get_user_link
 from core.database.bd import (
     bd_chat_create, bd_get_chat_id, bd_user_select,
-    bd_status_clear, bd_chat_delete)
+    bd_status_clear, bd_chat_delete, bd_get_statistics)
 from settings import settings
 import time
 
@@ -64,6 +65,88 @@ async def unban(message: Message, bot: Bot):
         return
 
 
+@router.message(F.text.startswith('/get_user_'))
+async def funcname(message: Message, bot: Bot):
+    if message.from_user.id == settings.bots.admin_id or\
+            message.from_user.id in settings.bots.moder_ids:
+        try:
+            user_id = int(message.text.split("_")[2])
+            user = await bd_user_select(user_id)
+        except Exception:
+            username = message.text.split("_")[2]
+            user = await bd_user_select(username=username)
+        if user:
+            await message.answer(
+                text=f'ID: {user["user_id"]} \nUsername: @{user["username"]}' +
+                f'\nИмя: {user["name"]}' +
+                f'\nВозраст: {user["age"]}, Пол: {user["sex"]}' +
+                f'\nПривычка: {user["habit_choice"]}' +
+                f'\nРегулярность: {user["habit_frequency"]} дней' +
+                f'\nПол партнера: {user["habit_mate_sex"]}',
+                reply_markup=get_user_link(user["user_id"]))
+        else:
+            await message.answer('Пользователь не найден')
+    else:
+        return
+
+
+@router.message(F.text.startswith('/update_chat_'))
+async def update_chat(message: Message, bot: Bot):
+    if message.from_user.id == settings.bots.admin_id or\
+            message.from_user.id in settings.bots.moder_ids:
+        user_id = int(message.text.split("_")[2])
+        pari_mate_id = (await bd_user_select(user_id))['pari_mate_id']
+        chat = await bd_get_chat_id(user_id=pari_mate_id, second=True)
+        try:
+            until_date = dt.datetime.now() + dt.timedelta(minutes=2)
+            await bot.ban_chat_member(
+                    str(chat['chat_id']), user_id, until_date=until_date)
+            await message.answer('Забанен из старого чата')
+        except Exception:
+            pass
+        for user in (user_id, pari_mate_id):
+            try:
+                await bot.send_message(
+                    user,
+                    'Ваш чат с напарником обновлен, ' +
+                    'проверь, находишься ли ты в нем?' +
+                    '\nДля этого нажми /pari -> "Перейти в совместный чат"')
+            except Exception:
+                pass
+        await message.answer('Успешно')
+    else:
+        return
+
+
+@router.message(F.text.startswith('/send_message_'))
+async def sen_message_chat(message: Message, bot: Bot):
+    if message.from_user.id == settings.bots.admin_id or\
+            message.from_user.id in settings.bots.moder_ids:
+        user_id = int(message.text.split("_")[2])
+        text = message.text.split("_")[3]
+        try:
+            await bot.send_message(user_id, text)
+            await message.answer('Сообщение отправлено')
+        except Exception:
+            pass
+    else:
+        return
+
+
+@router.message(F.text.startswith('/ban_chat_'))
+async def ban_chat(message: Message, bot: Bot):
+    if message.from_user.id == settings.bots.admin_id:
+        chat_id = (message.text.split("_")[2])
+        user_id = int(message.text.split("_")[3])
+        until_date = dt.datetime.now() + dt.timedelta(minutes=2)
+        await bot.ban_chat_member(
+                chat_id,
+                user_id, until_date=until_date)
+        await message.answer('Забанен')
+    else:
+        return
+
+
 @router.message(F.text.startswith('/ban_'))
 async def ban(message: Message, bot: Bot):
     if message.from_user.id == settings.bots.admin_id:
@@ -86,26 +169,20 @@ async def ban(message: Message, bot: Bot):
         return
 
 
-@router.message(F.text.startswith('/get_user_'))
-async def funcname(message: Message, bot: Bot):
+@router.message(F.text.startswith('/statistics'))
+async def statistics(message: Message, bot: Bot):
     if message.from_user.id == settings.bots.admin_id or\
             message.from_user.id in settings.bots.moder_ids:
-        try:
-            user_id = int(message.text.split("_")[2])
-            user = await bd_user_select(user_id)
-        except Exception:
-            username = message.text.split("_")[2]
-            user = await bd_user_select(username=username)
-        if user:
-            await message.answer(
-                text=f'ID: {user["user_id"]} \nUsername: @{user["username"]}' +
-                f'\nИмя: {user["name"]}' +
-                f'\nВозраст: {user["age"]}, Пол: {user["sex"]}' +
-                f'\nПривычка: {user["habit_choice"]}' +
-                f'\nРегулярность: {user["habit_frequency"]} дней' +
-                f'\nПол партнера: {user["habit_mate_sex"]}',
-                reply_markup=get_user_link(user["user_id"]))
-        else:
-            await message.answer('Пользователь не найден')
+        stats = await bd_get_statistics()
+        time = dt.datetime.now().strftime("%d-%m-%y %H:%M")
+        await message.answer(
+            f'Статистика PariMate на {time}' +
+            f'\n\nУчаствуют в пари: {stats["in_pari"]}' +
+            f'\nНаходятся в поиске: {stats["in_find"]}' +
+            f'\nСвободно чатов: {stats["empty_chats"]}' +
+            f'\n\nЛюдей на 1й неделе: {stats["users_1_week"]}' +
+            f'\nЛюдей на 2й неделе: {stats["users_2_week"]}' +
+            f'\nЛюдей на 3й+ неделе: {stats["users_3_week"]}'
+            )
     else:
         return

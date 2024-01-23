@@ -1,16 +1,16 @@
 from aiogram import Bot, Dispatcher
 from core.handlers import (
     basic, registration, habit, pari, profile,
-    find, events, echo, group_games, admin)
+    find, events, echo, group_games, admin, help)
 import asyncio
 import logging
 from settings import settings
 from core.utils.commands import set_commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from core.utils.notifications import (
-    send_notifications, change_category_find, last_day_notify)
+    send_notifications, change_category_find,
+    last_day_notify, check_ignore_reports)
 from core.middlewares.scheduler import SchedulerMiddleware
-
 from core.database.bd import match_partners
 
 
@@ -33,9 +33,10 @@ async def start():
 
     dp.update.middleware.register(SchedulerMiddleware(scheduler))
     dp.startup.register(start_bot)
-    # dp.shutdown.register(stop_bot)
+    dp.shutdown.register(stop_bot)
 
-    dp.include_routers(registration.router, basic.router,
+    dp.include_routers(help.router,
+                       registration.router, basic.router,
                        profile.router, pari.router,
                        habit.router, events.router,
                        find.router
@@ -48,9 +49,12 @@ async def start():
                       hours=1, start_date='2023-11-10 00:00:00',
                       kwargs={'bot': bot})
     scheduler.add_job(change_category_find, trigger='interval',
-                      minutes=5, kwargs={'bot': bot})
+                      minutes=30, kwargs={'bot': bot})
     scheduler.add_job(last_day_notify, trigger='interval',
-                      hours=2, start_date='2023-11-10 00:00:00',
+                      hours=1, start_date='2023-11-10 00:05:00',
+                      kwargs={'bot': bot})
+    scheduler.add_job(check_ignore_reports, trigger='interval',
+                      hours=1, start_date='2023-11-10 00:40:00',
                       kwargs={'bot': bot})
     scheduler.add_job(match_partners, trigger='interval',
                       seconds=30, kwargs={'bot': bot})

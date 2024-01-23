@@ -288,16 +288,17 @@ def pari_find_restart():
 ############################################################
 
 
-def get_pari(pari_link: str, user_id: int):
+def get_pari(pari_link: str | None = None, user_id: int | None = None):
     builder = InlineKeyboardBuilder()
     builder.button(
         text="Досрочно завершить пари",
         callback_data=f"сancel_pari_{user_id}"
     )
-    builder.button(
-        text="Перейти в совместный чат",
-        url=pari_link
-    )
+    if pari_link:
+        builder.button(
+            text="Перейти в совместный чат",
+            url=pari_link
+        )
     builder.button(
         text="Отчеты напарника",
         callback_data=f"mate_report_{user_id}"
@@ -307,7 +308,7 @@ def get_pari(pari_link: str, user_id: int):
         callback_data=f"update_report_{user_id}"
     )
 
-    builder.adjust(1, 1)
+    builder.adjust(1, 1, 1)
     return builder.as_markup()
 
 
@@ -347,7 +348,7 @@ def cancel_approve(user_id: int):
 def tech_report(user_id: int):
     builder = InlineKeyboardBuilder()
     builder.button(
-        text="Загрузить отчет",
+        text="Показать отчет",
         callback_data=f"mate_report_tech_{user_id}"
     )
     builder.adjust(1)
@@ -463,7 +464,11 @@ def get_user_link(user_id: int):
         text="Ссылка",
         url=button_url
     )
-
+    builder.button(
+        text='Проверить наличие отчетов',
+        callback_data=f"mate_report_tech_{user_id}"
+    )
+    builder.adjust(1, 1)
     return builder.as_markup()
 
 

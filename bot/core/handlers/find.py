@@ -40,8 +40,14 @@ async def find_cancel(callback: CallbackQuery, bot: Bot):
         return
     else:
         if user['time_pari_start']:
-            await callback.message.edit_text(
-                'Пари уже началось')
+            if user['pari_mate_id']:
+                await callback.message.edit_text(
+                    'Пари уже началось')
+            else:
+                await callback.message.edit_text(
+                    'Поиск отменен, пари продолжится без напарника' +
+                    '\n🤖 Твои отчеты будет подтверждать PariMate')
+                await bd_status_clear(callback.from_user.id, bot=bot)
             return
         days_string = (str(user["habit_notification_day"])[1:-1]
                        .replace("'", ""))
@@ -57,7 +63,8 @@ async def find_cancel(callback: CallbackQuery, bot: Bot):
             reply_markup=pari_find_start()
         )
         await bd_status_clear(callback.from_user.id, bot=bot)
-        await bd_chat_delete(callback.from_user.id)
+        # if result['time_pari_start'] is None:
+        await bd_chat_delete(callback.from_user.id, bot=bot)
 
 
 @router.callback_query(F.data.startswith("find_accept"))

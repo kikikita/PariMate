@@ -2,7 +2,7 @@ from aiogram import Bot
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from core.keyboards.inline import (
-    sex_kb, category_kb, pari_choice, pari_find,
+    sex_kb, category_kb, pari_choice,
     pari_decline_accept)
 from core.utils.states import Registration, Habit
 from aiogram.fsm.context import FSMContext
@@ -10,7 +10,7 @@ from ..database.bd import (
     bd_interaction, bd_user_select, bd_habit_clear, bd_chat_select)
 from core.filters.chat_type import ChatTypeFilter
 from core.handlers.profile import get_profile
-from core.handlers.find import find_cancel
+from core.handlers.find import find_start, find_cancel
 
 
 router = Router()
@@ -66,12 +66,11 @@ async def reg_start(callback: CallbackQuery, state: FSMContext,
                 f'{mate["habit_frequency"]} раз в неделю.',
                 reply_markup=pari_choice())
         # ЕСЛИ ЧЕЛ ИЩЕТ ПАРИ И У НЕГО НЕТ НАПАРНИКА
-        elif result['pari_mate_id'] is None\
-                and result['time_find_start']:
-            await callback.message.edit_text(
-                '⏳ Подбираем партнера по привычке...' +
-                '\n✉ Сообщим, как будет готово',
-                reply_markup=pari_find())
+        elif (result['pari_mate_id'] is None
+                and result['time_find_start']) or\
+                (result['pari_mate_id'] is None
+                    and result['time_find_start'] is None):
+            await find_start(callback)
         else:
             await callback.message.answer(
                 'У тебя уже есть активное пари!' +
@@ -81,6 +80,11 @@ async def reg_start(callback: CallbackQuery, state: FSMContext,
         await callback.message.answer(
             'Давай начнем, введи свое имя')
     await callback.answer()
+
+
+@router.message(Registration.name, F.text.startswith("/"))
+async def wrong_reg_name(message: Message, state: FSMContext):
+    await message.answer('Укажи настоящее имя!')
 
 
 @router.message(Registration.name, F.text)
@@ -96,7 +100,7 @@ async def reg_age(message: Message, state: FSMContext):
     if message.text.isdigit() and 7 < int(message.text) < 90:
         await state.update_data(age=message.text)
         await state.set_state(Registration.sex)
-        await message.answer('Какого ты пола?',
+        await message.answer('Выбери свой пол:',
                              reply_markup=sex_kb())
     else:
         await message.answer('Укажи свой реальный возраст числом!')
@@ -121,6 +125,7 @@ async def reg_sex(callback: CallbackQuery, state: FSMContext, bot: Bot):
         await callback.message.answer(
             'Выбери категорию привычек:',
             reply_markup=category_kb())
+    await callback.message.edit_text(f'Выбери свой пол:\n{action}')
     await callback.answer()
 
 
