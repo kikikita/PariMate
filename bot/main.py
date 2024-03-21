@@ -8,7 +8,7 @@ from settings import settings
 from core.utils.commands import set_commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from core.utils.notifications import (
-    send_notifications, change_category_find,
+    send_statistics, send_notifications, change_category_find,
     last_day_notify, check_ignore_reports)
 from core.middlewares.scheduler import SchedulerMiddleware
 from core.database.bd import match_partners
@@ -45,6 +45,9 @@ async def start():
     dp.include_router(echo.router)
     dp.include_router(group_games.router)
 
+    scheduler.add_job(send_statistics, trigger='interval',
+                      hours=12, start_date='2023-11-10 09:00:00',
+                      kwargs={'bot': bot})
     scheduler.add_job(send_notifications, trigger='interval',
                       hours=1, start_date='2023-11-10 00:00:00',
                       kwargs={'bot': bot})

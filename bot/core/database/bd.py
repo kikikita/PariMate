@@ -1,5 +1,5 @@
 import datetime as dt
-import os
+# import os
 import time
 from typing import List
 from typing import Optional
@@ -19,8 +19,8 @@ config = dotenv_values('.env')
 USER = config['POSTGRES_USER']
 PSWD = config['POSTGRES_PASSWORD']
 DB = config['POSTGRES_DB']
-# HOST = config['POSTGRES_HOST']
-HOST = os.environ['PG_HOST']
+HOST = config['POSTGRES_HOST']
+# HOST = os.environ['PG_HOST']
 
 
 async def bd_interaction(user_id: int, values: list, username: str):

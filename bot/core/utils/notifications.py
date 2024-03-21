@@ -6,8 +6,26 @@ from core.database.bd import (
     bd_notifications_select, bd_notify_delete,  bd_find_time_select,
     bd_find_category_update, bd_last_day_select, bd_report_delete,
     bd_status_clear, bd_chat_delete, bd_notify_update,
-    bd_report_ignore)
+    bd_report_ignore, bd_get_statistics)
 from settings import settings
+
+
+async def send_statistics(bot: Bot):
+    stats = await bd_get_statistics()
+    time = dt.datetime.now().strftime("%d-%m-%y %H:%M")
+    try:
+        await bot.send_message(
+            settings.bots.tech_id,
+            f'Статистика PariMate на {time}' +
+            f'\n\nУчаствуют в пари: {stats["in_pari"]}' +
+            f'\nНаходятся в поиске: {stats["in_find"]}' +
+            f'\nСвободно чатов: {stats["empty_chats"]}' +
+            f'\n\nЛюдей на 1й неделе: {stats["users_1_week"]}' +
+            f'\nЛюдей на 2й неделе: {stats["users_2_week"]}' +
+            f'\nЛюдей на 3й+ неделе: {stats["users_3_week"]}'
+            )
+    except Exception:
+        return
 
 
 async def send_notifications(bot: Bot):
